@@ -2,12 +2,12 @@ Metadata-Version: 2.4
 Name: juicyurls
 Version: 1.0.0
 Summary: A powerful URL filtering tool for security researchers and bug bounty hunters
-Author-email: Security Researcher <security@example.com>
+Author-email: Asjad Butt <asjadbutt@pm.me>
 License: MIT
-Project-URL: Homepage, https://github.com/yourusername/juicyurls
-Project-URL: Documentation, https://github.com/yourusername/juicyurls#readme
-Project-URL: Repository, https://github.com/yourusername/juicyurls
-Project-URL: Issues, https://github.com/yourusername/juicyurls/issues
+Project-URL: Homepage, https://github.com/asjadbutt/juicyurls
+Project-URL: Documentation, https://github.com/asjadbutt/juicyurls#readme
+Project-URL: Repository, https://github.com/asjadbutt/juicyurls
+Project-URL: Issues, https://github.com/asjadbutt/juicyurls/issues
 Keywords: security,bug-bounty,penetration-testing,url-filtering,waybackurls,gau,reconnaissance,web-security
 Classifier: Development Status :: 4 - Beta
 Classifier: Environment :: Console

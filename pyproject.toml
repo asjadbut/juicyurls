@@ -6,7 +6,7 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.8"
 authors = [
-    {name = "Security Researcher", email = "security@example.com"}
+    {name = "Asjad Butt", email = "asjadbutt@pm.me"}
 ]
 keywords = [
     "security",
@@ -36,10 +36,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/juicyurls"
-Documentation = "https://github.com/yourusername/juicyurls#readme"
-Repository = "https://github.com/yourusername/juicyurls"
-Issues = "https://github.com/yourusername/juicyurls/issues"
+Homepage = "https://github.com/asjadbut/juicyurls"
+Documentation = "https://github.com/asjadbut/juicyurls#readme"
+Repository = "https://github.com/asjadbut/juicyurls"
+Issues = "https://github.com/asjadbut/juicyurls/issues"
 
 [project.scripts]
 juicyurls = "juicyurls.cli:main"
