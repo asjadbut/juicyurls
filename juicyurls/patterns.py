@@ -19,11 +19,9 @@ from enum import Enum
 
 
 class Severity(Enum):
-    CRITICAL = "critical"
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-    INFO = "info"
+    HIGH = "high"      # Test immediately - likely vulnerable
+    MEDIUM = "medium"  # Worth investigating
+    LOW = "low"        # Low priority, check if time permits
 
 
 @dataclass
@@ -67,7 +65,7 @@ class PatternManager:
         # Remote Code Execution patterns - Based on GF-Patterns RCE
         self.patterns["rce"] = VulnPattern(
             name="Remote Code Execution",
-            severity=Severity.CRITICAL,
+            severity=Severity.HIGH,
             description="URLs that may allow command injection or code execution",
             path_patterns=[
                 r"/exec\b", r"/execute\b", r"/run\b", r"/shell\b",
@@ -97,7 +95,7 @@ class PatternManager:
         # Server-Side Template Injection
         self.patterns["ssti"] = VulnPattern(
             name="Server-Side Template Injection",
-            severity=Severity.CRITICAL,
+            severity=Severity.HIGH,
             description="URLs that may be vulnerable to template injection",
             path_patterns=[
                 r"/template[/?]", r"/render\b", r"/preview\b",
@@ -726,7 +724,7 @@ class PatternManager:
         # Apache/Tomcat/Java Vulnerabilities  
         self.patterns["java_vulns"] = VulnPattern(
             name="Java/Tomcat Vulnerabilities",
-            severity=Severity.CRITICAL,
+            severity=Severity.HIGH,
             description="Apache Struts, Log4j, Tomcat CVEs",
             path_patterns=[
                 # Apache Struts RCE - CVE-2017-5638, CVE-2018-11776
@@ -847,7 +845,7 @@ class PatternManager:
         # Git/Source Code Exposure
         self.patterns["source_exposure"] = VulnPattern(
             name="Source Code Exposure",
-            severity=Severity.CRITICAL,
+            severity=Severity.HIGH,
             description="Exposed source code, git repos, and sensitive files",
             path_patterns=[
                 # Git exposure - very common, high impact
@@ -880,7 +878,7 @@ class PatternManager:
         # Authentication Bypass Patterns
         self.patterns["auth_bypass"] = VulnPattern(
             name="Authentication Bypass",
-            severity=Severity.CRITICAL,
+            severity=Severity.HIGH,
             description="Endpoints commonly vulnerable to auth bypass",
             path_patterns=[
                 # Admin panels often misconfigured
@@ -912,7 +910,7 @@ class PatternManager:
         # Server Side Request Forgery - Common patterns
         self.patterns["ssrf_vulns"] = VulnPattern(
             name="SSRF Vulnerabilities",
-            severity=Severity.CRITICAL,
+            severity=Severity.HIGH,
             description="Common SSRF vulnerable endpoints from real disclosures",
             path_patterns=[
                 # Webhook endpoints - very commonly vulnerable

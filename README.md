@@ -23,23 +23,19 @@ When running reconnaissance tools like `waybackurls` or `gau`, you often get tho
 ### The Solution
 
 JuicyURLs automatically categorizes URLs by potential vulnerability type:
-- 🔴 **Critical**: RCE, SSTI
-- 🟠 **High**: SQLi, IDOR, LFI/RFI, SSRF, XXE
-- 🟡 **Medium**: Open Redirect, XSS, File Upload, Auth endpoints
-- 🔵 **Low**: API endpoints, GraphQL, WebSockets
-- ⚪ **Info**: Sensitive files, backups, config files
+- 🔴 **High**: RCE, SSTI, SQLi, IDOR, LFI/RFI, SSRF, XXE, Source Exposure
+- 🟡 **Medium**: Open Redirect, XSS, File Upload, Auth endpoints, Admin panels
+- 🔵 **Low**: API endpoints, Info disclosure
 
 ## ✨ Features
 
 - 🎯 **Smart Categorization** - Automatically identifies 25+ vulnerability categories
 - 🔍 **Real CVE Patterns** - Patterns based on actual CVEs (Log4j, Drupalgeddon, ProxyLogon, etc.)
 - 🧠 **Confidence Scoring** - Analyzes parameter VALUES, not just names, to reduce false positives
-- 🔧 **Technology Detection** - Identifies tech stacks (PHP, Java, WordPress, Laravel, etc.)
 - 📁 **Interesting Files** - Finds backups, configs, source code leaks, .git exposure
 - 🎯 **Smart Deduplication** - Groups similar URLs (e.g., `?id=1` and `?id=2`) keeping only unique patterns
-- 📊 **Statistics** - Shows analysis summary, tech breakdown, and confidence levels
+- 📊 **Statistics** - Shows analysis summary and confidence levels
 - 🎨 **Color Output** - Beautiful, color-coded terminal output with confidence stars (★★★)
-- 📁 **Multiple Formats** - Export as JSON, CSV, or plain text
 - 🔧 **Flexible Input** - File, stdin, or direct domain scanning
 - ⚡ **Fast** - Pure Python, no external dependencies
 - 🔗 **Pipeline Ready** - Works seamlessly with waybackurls, gau, etc.
@@ -97,51 +93,25 @@ juicyurls -d example.com --tool waybackurls
 juicyurls -d example.com --tool both
 ```
 
-### Filter by Category
+### Filter by Category or Severity
 
 ```bash
 # Only show SQL injection and IDOR candidates
 juicyurls -f urls.txt -c sqli idor
 
-# Only show high severity and above
+# Only show high severity
 juicyurls -f urls.txt -s high
 
 # Exclude certain categories
-juicyurls -f urls.txt --exclude info_disclosure dangerous_ext
+juicyurls -f urls.txt --exclude info_disclosure
 ```
 
-### Output Formats
+### Output Options
 
 ```bash
-# JSON output
-juicyurls -f urls.txt --format json -o results.json
-
-# CSV output
-juicyurls -f urls.txt --format csv -o results.csv
-
 # URLs only (for piping to other tools)
 juicyurls -f urls.txt --format urls > filtered_urls.txt
 
-# Detailed output with match information
-juicyurls -f urls.txt --format detailed
-```
-
-### Grouping Options
-
-```bash
-# Group by severity (default)
-juicyurls -f urls.txt --group-by severity
-
-# Group by category
-juicyurls -f urls.txt --group-by category
-
-# Group by domain
-juicyurls -f urls.txt --group-by domain
-```
-
-### Other Options
-
-```bash
 # Quiet mode - URLs only, no banner/stats
 juicyurls -f urls.txt -q
 
@@ -151,11 +121,8 @@ juicyurls -f urls.txt --no-color
 # Verbose mode with match details
 juicyurls -f urls.txt -v
 
-# List all categories
-juicyurls --list-categories
-
-# List detectable technologies
-juicyurls --list-tech
+# Save to file
+juicyurls -f urls.txt -o results.txt
 ```
 
 ### Confidence Filtering
@@ -176,12 +143,9 @@ juicyurls -f urls.txt --no-smart-dedupe
 juicyurls -f urls.txt --max-per-pattern 5
 ```
 
-### Technology & File Filtering
+### Finding Interesting Files
 
 ```bash
-# Filter by detected technology
-juicyurls -f urls.txt --tech PHP WordPress
-
 # Find only interesting files (backups, configs, source leaks)
 juicyurls -f urls.txt --interesting-files
 
@@ -198,14 +162,14 @@ juicyurls -f urls.txt -c java_vulns
 
 | Category | Severity | Description |
 |----------|----------|-------------|
-| `rce` | 🔴 Critical | Remote Code Execution patterns |
-| `ssti` | 🔴 Critical | Server-Side Template Injection |
-| `sqli` | 🟠 High | SQL Injection candidates |
-| `idor` | 🟠 High | Insecure Direct Object References |
-| `lfi_rfi` | 🟠 High | Local/Remote File Inclusion |
-| `ssrf` | 🟠 High | Server-Side Request Forgery |
-| `xxe` | 🟠 High | XML External Entity Injection |
-| `sensitive_files` | 🟠 High | Exposed sensitive files |
+| `rce` | 🔴 High | Remote Code Execution patterns |
+| `ssti` | 🔴 High | Server-Side Template Injection |
+| `sqli` | 🔴 High | SQL Injection candidates |
+| `idor` | 🔴 High | Insecure Direct Object References |
+| `lfi_rfi` | 🔴 High | Local/Remote File Inclusion |
+| `ssrf` | 🔴 High | Server-Side Request Forgery |
+| `xxe` | 🔴 High | XML External Entity Injection |
+| `sensitive_files` | 🔴 High | Exposed sensitive files |
 | `redirect` | 🟡 Medium | Open Redirect vulnerabilities |
 | `xss` | 🟡 Medium | Cross-Site Scripting candidates |
 | `auth` | 🟡 Medium | Authentication/Session endpoints |
@@ -222,32 +186,16 @@ juicyurls -f urls.txt -c java_vulns
 
 | Category | Severity | CVEs & Vulnerabilities |
 |----------|----------|------------------------|
-| `wp_vulns` | 🟠 High | WordPress: User enum (CVE-2017-5487), xmlrpc attacks, debug.log exposure, plugin vulns (CVE-2020-25213) |
-| `drupal_vulns` | 🟠 High | Drupalgeddon 2/3 (CVE-2018-7600, CVE-2018-7602), user enumeration |
-| `java_vulns` | 🔴 Critical | Apache Struts RCE (CVE-2017-5638), Log4j (CVE-2021-44228), Spring Boot Actuator, Tomcat Manager |
-| `php_vulns` | 🟠 High | PHPUnit RCE (CVE-2017-9841), phpMyAdmin, Laravel debug mode, Adminer |
-| `dotnet_vulns` | 🟠 High | Telerik UI (CVE-2019-18935), Exchange ProxyLogon (CVE-2021-26855), SharePoint |
-| `api_vulns` | 🟠 High | OWASP API Top 10, Swagger exposure, GraphQL introspection |
-| `source_exposure` | 🔴 Critical | .git exposure, .svn, CI/CD configs, cloud credentials, SSH keys |
-| `auth_bypass` | 🔴 Critical | Admin panels, OAuth misconfig, JWT endpoints, SSO/SAML |
-| `ssrf_vulns` | 🔴 Critical | Webhooks, URL fetching, PDF generators, import features |
-| `interesting_files` | 🟠 High | Backups (.bak, .sql), configs (.env), source leaks (.php~) |
-
-### 🔧 Technology Detection
-
-JuicyURLs automatically detects technology stacks:
-
-| Technology | Indicators |
-|------------|------------|
-| PHP | `.php`, `PHPSESSID` |
-| ASP.NET | `.asp`, `.aspx`, `__VIEWSTATE` |
-| Java | `.jsp`, `.do`, `.action`, `JSESSIONID` |
-| Python | Django/Flask patterns |
-| Ruby/Rails | `authenticity_token` |
-| Node.js | Express patterns |
-| WordPress | `/wp-admin/`, `/wp-content/` |
-| Drupal | `/sites/default/` |
-| Laravel | `/_debugbar/`, `XSRF-TOKEN` |
+| `wp_vulns` | 🔴 High | WordPress: User enum (CVE-2017-5487), xmlrpc attacks, debug.log exposure, plugin vulns (CVE-2020-25213) |
+| `drupal_vulns` | 🔴 High | Drupalgeddon 2/3 (CVE-2018-7600, CVE-2018-7602), user enumeration |
+| `java_vulns` | 🔴 High | Apache Struts RCE (CVE-2017-5638), Log4j (CVE-2021-44228), Spring Boot Actuator, Tomcat Manager |
+| `php_vulns` | 🔴 High | PHPUnit RCE (CVE-2017-9841), phpMyAdmin, Laravel debug mode, Adminer |
+| `dotnet_vulns` | 🔴 High | Telerik UI (CVE-2019-18935), Exchange ProxyLogon (CVE-2021-26855), SharePoint |
+| `api_vulns` | 🔴 High | OWASP API Top 10, Swagger exposure, GraphQL introspection |
+| `source_exposure` | 🔴 High | .git exposure, .svn, CI/CD configs, cloud credentials, SSH keys |
+| `auth_bypass` | 🔴 High | Admin panels, OAuth misconfig, JWT endpoints, SSO/SAML |
+| `ssrf_vulns` | 🔴 High | Webhooks, URL fetching, PDF generators, import features |
+| `interesting_files` | 🔴 High | Backups (.bak, .sql), configs (.env), source leaks (.php~) |
 
 ## 🔧 Advanced Usage
 
@@ -284,9 +232,6 @@ done
 juicyurls -f urls.txt -c sqli --format urls > sqli_candidates.txt
 sqlmap -m sqli_candidates.txt --batch
 
-# Find all API endpoints with exposed keys
-juicyurls -f urls.txt -c api api_vulns --high-confidence --format json | jq '.matches[].url'
-
 # Hunt for specific CVEs
 juicyurls -f urls.txt -c java_vulns  # Log4j, Struts, Spring
 juicyurls -f urls.txt -c wp_vulns    # WordPress vulns
@@ -319,76 +264,85 @@ cat output/* | juicyurls
 
         🎯 Bug Bounty URL Analyzer - Find the Juice! 🧃
 
+
 📊 Analysis Statistics
 ==================================================
-  Total URLs processed: 74779
-  Unique URLs: 52341
-  Matched URLs: 288
-  Similar URLs grouped: 1311 (kept max per pattern)
-  Domains found: 1
+  Total URLs processed: 1337
+  Unique URLs: 892
+  Matched URLs: 156
+  Domains found: 5
 
   By Severity:
-    CRITICAL: 12
-    HIGH: 156
-    MEDIUM: 87
-    LOW: 33
+    HIGH: 23
+    MEDIUM: 67
+    LOW: 66
 
-  By Category:
-    idor: 89
-    api_vulns: 45
-    sqli: 34
-    ...
-
-  🔧 Technologies Detected:
-    PHP (142), WordPress (89), Java (23)
-
-🔴 CRITICAL (12 URLs)
+🔴 HIGH (23 URLs)
 ------------------------------------------------------------
-  ★★★ https://example.com/.git/config [source_exposure] 
-  ★★☆ https://example.com/actuator/heapdump [java_vulns]
-
-🟠 HIGH (156 URLs)
-------------------------------------------------------------
-  ★★☆ https://example.com/api/v2/settings?appKey=internal [idor, api] 🔧PHP
-  ★★☆ https://example.com/wp-json/wp/v2/users [wp_vulns] 🔧WordPress
-  ★☆☆ https://example.com/user/12345 [idor]
+  ★★★ https://api.example.com/v1/users?id=12345 [idor, api]
+       Why: Numeric ID value; API endpoint path
+  ★★☆ https://example.com/download?file=report.pdf [lfi_rfi]
+       Why: File path in param
+  ★★☆ https://example.com/.git/config [source_exposure]
+       Why: Git repository exposed
 ```
 
-## 🛠️ Requirements
+## 📋 All Options
 
-- Python 3.8 or higher
-- No external dependencies (uses only standard library)
+```
+Usage: juicyurls [OPTIONS]
 
-### Optional Tools for URL Gathering
+Input Options:
+  -f, --file FILE          Input file containing URLs
+  -d, --domain DOMAIN      Domain to gather URLs for
+  --tool {waybackurls,gau,both}  External tool for URL gathering
 
-- [waybackurls](https://github.com/tomnomnom/waybackurls) - `go install github.com/tomnomnom/waybackurls@latest`
-- [gau](https://github.com/lc/gau) - `go install github.com/lc/gau/v2/cmd/gau@latest`
+Filter Options:
+  -c, --categories CAT...  Filter by categories
+  -s, --severity {high,medium,low}  Minimum severity
+  --exclude CAT...         Exclude categories
+  --min-confidence 0.0-1.0 Minimum confidence score
+  --high-confidence        Only high confidence (≥50%)
+  --no-dedupe              Keep duplicate URLs
+  --no-smart-dedupe        Keep similar URLs
+  --max-per-pattern N      Max URLs per pattern (default: 1)
+  --interesting-files      Only interesting files
+
+Output Options:
+  -o, --output FILE        Output file
+  --format {plain,urls}    Output format
+  --no-color               Disable colors
+  --no-stats               Hide statistics
+  -v, --verbose            Show match details
+  -q, --quiet              URLs only
+
+Info:
+  --list-categories        List all categories
+  --version                Show version
+  -h, --help               Show help
+```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Here are some ways you can help:
+Contributions are welcome! Feel free to:
 
-1. **Add new patterns** - Found a pattern that catches vulnerabilities? Submit a PR!
-2. **Report false positives** - Help us tune the patterns
-3. **Add new features** - Check the issues for feature requests
-4. **Documentation** - Help improve the docs
+- Add new vulnerability patterns
+- Improve detection accuracy
+- Add new output formats
+- Fix bugs
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
-## ⚠️ Disclaimer
+## 🙏 Credits
 
-This tool is intended for **authorized security testing** and **bug bounty programs** only. Always ensure you have proper authorization before testing any systems. The authors are not responsible for any misuse of this tool.
-
-## 🙏 Acknowledgments
-
-- Inspired by [waybackurls](https://github.com/tomnomnom/waybackurls) by tomnomnom
-- Inspired by [gau](https://github.com/lc/gau) by lc
-- Thanks to the bug bounty community for pattern contributions
+- Inspired by [tomnomnom/gf](https://github.com/tomnomnom/gf)
+- Pattern ideas from [1ndianl33t/Gf-Patterns](https://github.com/1ndianl33t/Gf-Patterns)
+- Built for the bug bounty community
 
 ---
 
 <p align="center">
-  Made with ❤️ for the Bug Bounty Community
+  Made with 🧃 by security researchers, for security researchers
 </p>

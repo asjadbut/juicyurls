@@ -148,34 +148,15 @@ def list_categories(pattern_manager: PatternManager):
     
     for name, pattern in sorted(pattern_manager.get_all_patterns().items()):
         severity_icon = {
-            Severity.CRITICAL: "🔴",
-            Severity.HIGH: "🟠",
+            Severity.HIGH: "🔴",
             Severity.MEDIUM: "🟡",
             Severity.LOW: "🔵",
-            Severity.INFO: "⚪",
         }.get(pattern.severity, "")
         
         print(f"\n  {severity_icon} {name}")
         print(f"     Severity: {pattern.severity.value.upper()}")
         print(f"     {pattern.description}")
     
-    print("\n")
-
-
-def list_technologies(pattern_manager: PatternManager):
-    """List all detectable technologies."""
-    print("\n🔧 Detectable Technologies:\n")
-    print("-" * 70)
-    
-    for tech_key, tech_data in sorted(pattern_manager.tech_patterns.items()):
-        print(f"\n  📦 {tech_data['name']}")
-        print(f"     Key: {tech_key}")
-        if tech_data['indicators']:
-            print(f"     Indicators: {', '.join(tech_data['indicators'])}")
-    
-    print("\n")
-    print("Usage: juicyurls -f urls.txt --tech PHP WordPress")
-    print("       juicyurls -d example.com --tech java")
     print("\n")
 
 
@@ -225,7 +206,7 @@ Examples:
     )
     filter_group.add_argument(
         '-s', '--severity',
-        choices=['critical', 'high', 'medium', 'low', 'info'],
+        choices=['high', 'medium', 'low'],
         help='Minimum severity level to include'
     )
     filter_group.add_argument(
@@ -264,12 +245,6 @@ Examples:
         help='Max URLs to keep per similar endpoint pattern (default: 1). Use with smart dedupe.'
     )
     filter_group.add_argument(
-        '--tech',
-        nargs='+',
-        metavar='TECH',
-        help='Filter by detected technology (e.g., PHP WordPress Java ASP.NET)'
-    )
-    filter_group.add_argument(
         '--interesting-files',
         action='store_true',
         help='Only show interesting files (backups, configs, source code leaks)'
@@ -284,15 +259,9 @@ Examples:
     )
     output_group.add_argument(
         '--format',
-        choices=['plain', 'json', 'csv', 'urls', 'detailed'],
+        choices=['plain', 'urls'],
         default='plain',
-        help='Output format (default: plain)'
-    )
-    output_group.add_argument(
-        '--group-by',
-        choices=['severity', 'category', 'domain', 'none'],
-        default='severity',
-        help='Group results by (default: severity)'
+        help='Output format: plain (with stats) or urls (just URLs)'
     )
     output_group.add_argument(
         '--no-color',
@@ -322,11 +291,6 @@ Examples:
         help='List all available categories and exit'
     )
     parser.add_argument(
-        '--list-tech',
-        action='store_true',
-        help='List all detectable technologies and exit'
-    )
-    parser.add_argument(
         '--version',
         action='version',
         version=f'%(prog)s {get_version()}'
@@ -340,11 +304,6 @@ Examples:
     # List categories and exit
     if args.list_categories:
         list_categories(pattern_manager)
-        return 0
-    
-    # List technologies and exit
-    if args.list_tech:
-        list_technologies(pattern_manager)
         return 0
     
     # Collect URLs
@@ -415,34 +374,6 @@ Examples:
         max_per_pattern=args.max_per_pattern,
     )
     
-    # Post-filter by technology if specified
-    if args.tech:
-        tech_filter = [t.lower() for t in args.tech]
-        filtered_matches = []
-        for match in result.all_matches:
-            match_tech = [t.lower() for t in match.technologies]
-            if any(t in tech for tech in match_tech for t in tech_filter):
-                filtered_matches.append(match)
-        
-        # Rebuild result with filtered matches
-        result.all_matches = filtered_matches
-        result.matched_urls = len(filtered_matches)
-        
-        # Rebuild categorizations
-        from collections import defaultdict
-        result.categorized = defaultdict(list)
-        result.by_severity = defaultdict(list)
-        result.by_domain = defaultdict(list)
-        result.detected_technologies = defaultdict(int)
-        
-        for match in filtered_matches:
-            for cat in match.categories:
-                result.categorized[cat].append(match)
-            result.by_severity[match.highest_severity].append(match)
-            result.by_domain[match.domain].append(match)
-            for tech in match.technologies:
-                result.detected_technologies[tech] += 1
-    
     # Configure output
     output_format = OutputFormat(args.format) if not args.quiet else OutputFormat.URLS_ONLY
     
@@ -450,7 +381,6 @@ Examples:
         format=output_format,
         color=not args.no_color,
         show_stats=not args.no_stats and not args.quiet,
-        group_by=args.group_by if args.group_by != 'none' else None,
         verbose=args.verbose,
         output_file=args.output,
     )

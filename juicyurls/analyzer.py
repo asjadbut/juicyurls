@@ -91,14 +91,13 @@ class MatchedURL:
     categories: List[str] = field(default_factory=list)
     severities: List[Severity] = field(default_factory=list)
     matched_patterns: Dict[str, List[str]] = field(default_factory=dict)
-    highest_severity: Severity = Severity.INFO
+    highest_severity: Severity = Severity.LOW
     confidence: float = 0.0  # 0.0 to 1.0 confidence score
     confidence_reasons: List[str] = field(default_factory=list)
-    technologies: List[str] = field(default_factory=list)  # Detected technologies
     
     def __post_init__(self):
         if self.severities:
-            severity_order = [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO]
+            severity_order = [Severity.HIGH, Severity.MEDIUM, Severity.LOW]
             for sev in severity_order:
                 if sev in self.severities:
                     self.highest_severity = sev
@@ -116,7 +115,6 @@ class MatchedURL:
             "matched_patterns": self.matched_patterns,
             "confidence": self.confidence,
             "confidence_reasons": self.confidence_reasons,
-            "technologies": self.technologies,
         }
 
 
@@ -131,7 +129,6 @@ class AnalysisResult:
     by_severity: Dict[Severity, List[MatchedURL]] = field(default_factory=lambda: defaultdict(list))
     by_domain: Dict[str, List[MatchedURL]] = field(default_factory=lambda: defaultdict(list))
     all_matches: List[MatchedURL] = field(default_factory=list)
-    detected_technologies: Dict[str, int] = field(default_factory=lambda: defaultdict(int))  # Tech -> count
     
     def get_stats(self) -> Dict:
         """Get analysis statistics."""
@@ -149,8 +146,6 @@ class AnalysisResult:
         }
         if self.dedupe_removed > 0:
             stats["similar_urls_removed"] = self.dedupe_removed
-        if self.detected_technologies:
-            stats["technologies_detected"] = dict(self.detected_technologies)
         return stats
 
 
@@ -361,9 +356,6 @@ class URLAnalyzer:
             # Calculate overall confidence as weighted average
             overall_confidence = sum(category_confidence.values()) / len(category_confidence)
             
-            # Detect technologies
-            detected_tech = self.pattern_manager.detect_technologies(url)
-            
             return MatchedURL(
                 url=url,
                 domain=domain,
@@ -374,7 +366,6 @@ class URLAnalyzer:
                 matched_patterns=dict(matched_patterns_detail),
                 confidence=round(overall_confidence, 2),
                 confidence_reasons=list(set(all_confidence_reasons)),  # Dedupe reasons
-                technologies=detected_tech,
             )
         
         return None
@@ -408,11 +399,9 @@ class URLAnalyzer:
         result.total_urls = len(urls)
         
         severity_order = {
-            Severity.CRITICAL: 0,
-            Severity.HIGH: 1,
-            Severity.MEDIUM: 2,
-            Severity.LOW: 3,
-            Severity.INFO: 4,
+            Severity.HIGH: 0,
+            Severity.MEDIUM: 1,
+            Severity.LOW: 2,
         }
         
         # Track URL signatures for smart deduplication
@@ -452,10 +441,6 @@ class URLAnalyzer:
                 
                 result.matched_urls += 1
                 result.all_matches.append(match)
-                
-                # Track detected technologies
-                for tech in match.technologies:
-                    result.detected_technologies[tech] += 1
                 
                 # Categorize by vulnerability type
                 for cat in match.categories:
