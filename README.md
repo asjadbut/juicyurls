@@ -47,7 +47,7 @@ JuicyURLs automatically categorizes URLs by potential vulnerability type:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/juicyurls.git
+git clone https://github.com/asjadbut/juicyurls.git
 cd juicyurls
 
 # Install in development mode
@@ -60,7 +60,7 @@ pip install .
 ### Quick Install
 
 ```bash
-pip install git+https://github.com/yourusername/juicyurls.git
+pip install git+https://github.com/asjadbut/juicyurls.git
 ```
 
 ### Manual (No Install)
