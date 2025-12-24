@@ -40,6 +40,43 @@ LOW_VALUE_PATTERNS = [
 ]
 
 
+def get_url_signature(url: str, path: str, params: Dict[str, List[str]]) -> str:
+    """
+    Generate a signature for a URL by normalizing parameter values.
+    
+    This groups URLs that differ only in numeric ID values, like:
+    - /product?id=123 and /product?id=456 -> same signature
+    - /user?id=1&name=john and /user?id=2&name=jane -> same signature
+    
+    Returns a string signature for grouping similar URLs.
+    """
+    # Normalize parameter values
+    normalized_params = []
+    for key in sorted(params.keys()):
+        values = params[key]
+        # Normalize numeric values to placeholder
+        normalized_values = []
+        for v in values:
+            if VALUE_PATTERNS["numeric_id"].match(v):
+                normalized_values.append("<NUM>")
+            elif VALUE_PATTERNS["url_value"].search(v):
+                normalized_values.append("<URL>")
+            else:
+                # Keep first 20 chars of non-numeric values for grouping
+                normalized_values.append(v[:20] if len(v) > 20 else v)
+        normalized_params.append(f"{key}={'|'.join(sorted(set(normalized_values)))}")
+    
+    # Extract domain from URL
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc
+    except:
+        domain = ""
+    
+    # Signature = domain + path + normalized params
+    return f"{domain}{path}?{'&'.join(normalized_params)}"
+
+
 @dataclass
 class MatchedURL:
     """Represents a URL that matched one or more vulnerability patterns."""
@@ -83,6 +120,7 @@ class AnalysisResult:
     total_urls: int = 0
     unique_urls: int = 0
     matched_urls: int = 0
+    dedupe_removed: int = 0  # URLs removed by smart deduplication
     categorized: Dict[str, List[MatchedURL]] = field(default_factory=lambda: defaultdict(list))
     by_severity: Dict[Severity, List[MatchedURL]] = field(default_factory=lambda: defaultdict(list))
     by_domain: Dict[str, List[MatchedURL]] = field(default_factory=lambda: defaultdict(list))
@@ -90,7 +128,7 @@ class AnalysisResult:
     
     def get_stats(self) -> Dict:
         """Get analysis statistics."""
-        return {
+        stats = {
             "total_urls_processed": self.total_urls,
             "unique_urls": self.unique_urls,
             "matched_urls": self.matched_urls,
@@ -102,6 +140,9 @@ class AnalysisResult:
             },
             "domains_found": len(self.by_domain),
         }
+        if self.dedupe_removed > 0:
+            stats["similar_urls_removed"] = self.dedupe_removed
+        return stats
 
 
 class URLAnalyzer:
@@ -322,6 +363,8 @@ class URLAnalyzer:
         deduplicate: bool = True,
         min_severity: Optional[Severity] = None,
         min_confidence: float = 0.0,
+        smart_dedupe: bool = True,
+        max_per_pattern: int = 5,
     ) -> AnalysisResult:
         """
         Analyze a list of URLs.
@@ -332,6 +375,8 @@ class URLAnalyzer:
             deduplicate: Whether to remove duplicate URLs
             min_severity: Minimum severity level to include
             min_confidence: Minimum confidence score (0.0-1.0)
+            smart_dedupe: Group similar URLs (differ only in param values) and keep max N
+            max_per_pattern: Maximum URLs to keep per similar pattern (default 5)
         
         Returns:
             AnalysisResult containing categorized matches
@@ -346,6 +391,9 @@ class URLAnalyzer:
             Severity.LOW: 3,
             Severity.INFO: 4,
         }
+        
+        # Track URL signatures for smart deduplication
+        signature_counts: Dict[str, int] = defaultdict(int)
         
         for url in urls:
             url = self.normalize_url(url)
@@ -368,6 +416,15 @@ class URLAnalyzer:
                 # Filter by minimum severity if specified
                 if min_severity:
                     if severity_order[match.highest_severity] > severity_order[min_severity]:
+                        continue
+                
+                # Smart deduplication: limit similar URLs
+                if smart_dedupe and match.params:
+                    signature = get_url_signature(match.url, match.path, match.params)
+                    signature_counts[signature] += 1
+                    
+                    if signature_counts[signature] > max_per_pattern:
+                        result.dedupe_removed += 1
                         continue
                 
                 result.matched_urls += 1

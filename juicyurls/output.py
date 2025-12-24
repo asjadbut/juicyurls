@@ -153,6 +153,8 @@ class OutputFormatter:
         output.write(f"  Total URLs processed: {self._colorize(str(stats['total_urls_processed']), Colors.BRIGHT_WHITE)}\n")
         output.write(f"  Unique URLs: {self._colorize(str(stats['unique_urls']), Colors.BRIGHT_WHITE)}\n")
         output.write(f"  Matched URLs: {self._colorize(str(stats['matched_urls']), Colors.BRIGHT_GREEN)}\n")
+        if 'similar_urls_removed' in stats:
+            output.write(f"  Similar URLs grouped: {self._colorize(str(stats['similar_urls_removed']), Colors.DIM)} (kept max per pattern)\n")
         output.write(f"  Domains found: {self._colorize(str(stats['domains_found']), Colors.BRIGHT_CYAN)}\n")
         
         output.write(self._colorize("\n  By Severity:\n", Colors.UNDERLINE))

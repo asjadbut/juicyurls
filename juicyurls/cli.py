@@ -234,6 +234,18 @@ Examples:
         action='store_true',
         help='Only show high confidence results (equivalent to --min-confidence 0.5)'
     )
+    filter_group.add_argument(
+        '--no-smart-dedupe',
+        action='store_true',
+        help='Disable smart deduplication (keep all similar URLs that differ only in param values)'
+    )
+    filter_group.add_argument(
+        '--max-per-pattern',
+        type=int,
+        default=1,
+        metavar='N',
+        help='Max URLs to keep per similar endpoint pattern (default: 1). Use with smart dedupe.'
+    )
     
     # Output options
     output_group = parser.add_argument_group('Output Options')
@@ -357,6 +369,8 @@ Examples:
         deduplicate=not args.no_dedupe,
         min_severity=min_severity,
         min_confidence=min_confidence,
+        smart_dedupe=not args.no_smart_dedupe,
+        max_per_pattern=args.max_per_pattern,
     )
     
     # Configure output
