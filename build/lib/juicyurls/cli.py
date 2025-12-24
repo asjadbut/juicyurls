@@ -10,7 +10,6 @@ import argparse
 import sys
 import subprocess
 import shutil
-import os
 from typing import List, Optional
 
 from .analyzer import URLAnalyzer
@@ -21,57 +20,6 @@ from .output import OutputFormatter, OutputConfig, OutputFormat
 def get_version() -> str:
     """Get the tool version."""
     return "1.0.0"
-
-
-def find_tool(tool: str) -> Optional[str]:
-    """
-    Find an external tool, checking multiple locations.
-    
-    Args:
-        tool: Tool name (waybackurls, gau, etc.)
-    
-    Returns:
-        Full path to the tool if found, None otherwise
-    """
-    # First, try shutil.which (checks PATH)
-    tool_path = shutil.which(tool)
-    if tool_path:
-        return tool_path
-    
-    # On Windows, also try with .exe extension
-    if sys.platform == 'win32' and not tool.endswith('.exe'):
-        tool_path = shutil.which(tool + '.exe')
-        if tool_path:
-            return tool_path
-    
-    # Check common Go bin locations
-    go_bin_paths = []
-    
-    # GOBIN environment variable
-    gobin = os.environ.get('GOBIN')
-    if gobin:
-        go_bin_paths.append(gobin)
-    
-    # GOPATH/bin
-    gopath = os.environ.get('GOPATH')
-    if gopath:
-        go_bin_paths.append(os.path.join(gopath, 'bin'))
-    
-    # Default Go bin location: ~/go/bin
-    home = os.path.expanduser('~')
-    go_bin_paths.append(os.path.join(home, 'go', 'bin'))
-    
-    # Check each Go bin path
-    for bin_path in go_bin_paths:
-        if sys.platform == 'win32':
-            candidate = os.path.join(bin_path, tool + '.exe')
-        else:
-            candidate = os.path.join(bin_path, tool)
-        
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            return candidate
-    
-    return None
 
 
 def run_external_tool(tool: str, domain: str, extra_args: List[str] = None) -> List[str]:
@@ -87,14 +35,13 @@ def run_external_tool(tool: str, domain: str, extra_args: List[str] = None) -> L
         List of URLs gathered
     """
     # Check if tool is available
-    tool_path = find_tool(tool)
-    if not tool_path:
+    if not shutil.which(tool):
         print(f"Error: {tool} not found in PATH. Please install it first.", file=sys.stderr)
         print(f"  Install waybackurls: go install github.com/tomnomnom/waybackurls@latest", file=sys.stderr)
         print(f"  Install gau: go install github.com/lc/gau/v2/cmd/gau@latest", file=sys.stderr)
         sys.exit(1)
     
-    cmd = [tool_path]
+    cmd = [tool]
     if extra_args:
         cmd.extend(extra_args)
     cmd.append(domain)
@@ -222,18 +169,6 @@ Examples:
         action='store_true',
         help='Do not remove duplicate URLs'
     )
-    filter_group.add_argument(
-        '--min-confidence',
-        type=float,
-        default=0.0,
-        metavar='0.0-1.0',
-        help='Minimum confidence score (0.0-1.0, default: 0.0). Higher = fewer false positives'
-    )
-    filter_group.add_argument(
-        '--high-confidence',
-        action='store_true',
-        help='Only show high confidence results (equivalent to --min-confidence 0.5)'
-    )
     
     # Output options
     output_group = parser.add_argument_group('Output Options')
@@ -327,10 +262,6 @@ Examples:
         print("Use --help for usage information.", file=sys.stderr)
         return 1
     
-    # Show analysis message
-    if not args.quiet:
-        print(f"🧃 Analyzing {len(urls)} URLs for juicy endpoints...", file=sys.stderr)
-    
     # Prepare categories filter
     categories = args.categories
     if args.exclude and categories:
@@ -342,11 +273,6 @@ Examples:
     # Parse minimum severity
     min_severity = parse_severity(args.severity) if args.severity else None
     
-    # Calculate minimum confidence
-    min_confidence = args.min_confidence
-    if args.high_confidence:
-        min_confidence = 0.5
-    
     # Initialize analyzer
     analyzer = URLAnalyzer(pattern_manager)
     
@@ -356,7 +282,6 @@ Examples:
         categories=categories,
         deduplicate=not args.no_dedupe,
         min_severity=min_severity,
-        min_confidence=min_confidence,
     )
     
     # Configure output

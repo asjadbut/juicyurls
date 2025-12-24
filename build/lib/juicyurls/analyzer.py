@@ -1,10 +1,5 @@
 """
 URL Analyzer - Core logic for parsing and categorizing URLs.
-
-Features:
-- Context-aware matching (checks parameter VALUES, not just names)
-- Confidence scoring to reduce false positives
-- Smart deduplication (groups similar URLs)
 """
 
 import re
@@ -14,30 +9,6 @@ from typing import List, Dict, Set, Optional, Tuple
 from collections import defaultdict
 
 from .patterns import PatternManager, VulnPattern, Severity
-
-
-# Value patterns that indicate high-confidence matches
-VALUE_PATTERNS = {
-    # URL/SSRF indicators - value looks like a URL
-    "url_value": re.compile(r'^https?://|^//|^\.\./', re.IGNORECASE),
-    # File path indicators - value looks like a file path
-    "file_path": re.compile(r'\.\.[\\/]|^[\\/]|\.php$|\.asp$|\.jsp$|\.txt$|\.xml$|\.ini$|\.conf$|\.log$|/etc/|/var/|c:\\\\|\.\.%2f', re.IGNORECASE),
-    # Numeric ID - just a number (potential IDOR/SQLi)
-    "numeric_id": re.compile(r'^\d+$'),
-    # Command indicators
-    "command_like": re.compile(r'^[\w\-]+\s|;|\||`|\$\(|&&', re.IGNORECASE),
-    # Template/code injection indicators
-    "template_like": re.compile(r'\{\{|\$\{|\%\{|<%|<\?', re.IGNORECASE),
-}
-
-# Low-value parameter values that should reduce confidence
-LOW_VALUE_PATTERNS = [
-    re.compile(r'^(true|false|yes|no|on|off|0|1)$', re.IGNORECASE),
-    re.compile(r'^(asc|desc|ascending|descending)$', re.IGNORECASE),
-    re.compile(r'^(collapsed|expanded|grid|list|table|card)$', re.IGNORECASE),
-    re.compile(r'^(en|es|fr|de|zh|ja|ru|pt|it|nl|ko|ar|default)$', re.IGNORECASE),  # Languages
-    re.compile(r'^[\w\-]+\.(jpg|jpeg|png|gif|svg|css|js|ico|woff|woff2)$', re.IGNORECASE),  # Static files
-]
 
 
 @dataclass
@@ -51,8 +22,6 @@ class MatchedURL:
     severities: List[Severity] = field(default_factory=list)
     matched_patterns: Dict[str, List[str]] = field(default_factory=dict)
     highest_severity: Severity = Severity.INFO
-    confidence: float = 0.0  # 0.0 to 1.0 confidence score
-    confidence_reasons: List[str] = field(default_factory=list)
     
     def __post_init__(self):
         if self.severities:
@@ -72,8 +41,6 @@ class MatchedURL:
             "categories": self.categories,
             "severity": self.highest_severity.value,
             "matched_patterns": self.matched_patterns,
-            "confidence": self.confidence,
-            "confidence_reasons": self.confidence_reasons,
         }
 
 
@@ -142,67 +109,13 @@ class URLAnalyzer:
         except Exception:
             return url, "", "", {}
     
-    def _calculate_param_confidence(self, param_name: str, param_values: List[str], category: str) -> Tuple[float, List[str]]:
+    def match_url(self, url: str, categories: Optional[List[str]] = None) -> Optional[MatchedURL]:
         """
-        Calculate confidence score for a parameter match based on its value.
-        
-        Returns:
-            Tuple of (confidence_boost, list of reasons)
-        """
-        confidence = 0.0
-        reasons = []
-        
-        for value in param_values:
-            if not value:
-                continue
-            
-            # Check if value looks low-quality (common boring values)
-            is_low_value = False
-            for low_pattern in LOW_VALUE_PATTERNS:
-                if low_pattern.match(value):
-                    is_low_value = True
-                    break
-            
-            if is_low_value:
-                confidence -= 0.2
-                continue
-            
-            # Check for high-value patterns based on category
-            if category in ['ssrf', 'redirect']:
-                if VALUE_PATTERNS['url_value'].search(value):
-                    confidence += 0.5
-                    reasons.append(f"value looks like URL: {param_name}={value[:50]}")
-            
-            if category in ['lfi_rfi']:
-                if VALUE_PATTERNS['file_path'].search(value):
-                    confidence += 0.5
-                    reasons.append(f"value looks like file path: {param_name}={value[:50]}")
-            
-            if category in ['sqli', 'idor']:
-                if VALUE_PATTERNS['numeric_id'].match(value):
-                    confidence += 0.3
-                    reasons.append(f"numeric ID: {param_name}={value}")
-            
-            if category in ['rce']:
-                if VALUE_PATTERNS['command_like'].search(value):
-                    confidence += 0.5
-                    reasons.append(f"command-like value: {param_name}")
-            
-            if category in ['ssti']:
-                if VALUE_PATTERNS['template_like'].search(value):
-                    confidence += 0.5
-                    reasons.append(f"template syntax in value: {param_name}")
-        
-        return confidence, reasons
-    
-    def match_url(self, url: str, categories: Optional[List[str]] = None, min_confidence: float = 0.0) -> Optional[MatchedURL]:
-        """
-        Check if URL matches any vulnerability patterns with confidence scoring.
+        Check if URL matches any vulnerability patterns.
         
         Args:
             url: The URL to analyze
             categories: Optional list of categories to filter by
-            min_confidence: Minimum confidence score to return match (0.0-1.0)
         
         Returns:
             MatchedURL if matches found, None otherwise
@@ -212,14 +125,9 @@ class URLAnalyzer:
         if not domain and not path:
             return None
         
-        # Full URL for pattern matching (includes query string)
-        full_url = url
-        
         matched_categories = []
         matched_severities = []
         matched_patterns_detail = defaultdict(list)
-        category_confidence = {}
-        all_confidence_reasons = []
         
         patterns = self.pattern_manager.get_all_patterns()
         
@@ -228,79 +136,37 @@ class URLAnalyzer:
             patterns = {k: v for k, v in patterns.items() if k in categories}
         
         for cat_name, pattern in patterns.items():
-            path_matched = False
-            param_matched = False
-            param_name_matched = None
-            ext_matched = False
-            base_confidence = 0.3  # Start with base confidence
-            confidence_reasons = []
-            
-            # First check exclusions - if any exclude pattern matches, skip this category
-            excluded = False
-            for compiled in pattern.compiled_exclude:
-                if compiled.search(full_url) or compiled.search(path):
-                    excluded = True
-                    break
-            
-            if excluded:
-                continue
+            matched = False
             
             # Check path patterns
             for compiled in pattern.compiled_path:
-                if compiled.search(path) or compiled.search(full_url):
-                    path_matched = True
+                if compiled.search(path):
+                    matched = True
                     matched_patterns_detail[cat_name].append(f"path:{compiled.pattern}")
-                    base_confidence += 0.2  # Path match adds confidence
-                    confidence_reasons.append(f"path matches {compiled.pattern}")
                     break
             
-            # Check parameter patterns AND their values
-            for param_name, param_values in params.items():
+            # Check parameter patterns
+            for param_name in params.keys():
                 for compiled in pattern.compiled_param:
                     if compiled.match(param_name):
-                        param_matched = True
-                        param_name_matched = param_name
+                        matched = True
                         matched_patterns_detail[cat_name].append(f"param:{param_name}")
-                        
-                        # Calculate confidence based on parameter value
-                        value_confidence, value_reasons = self._calculate_param_confidence(
-                            param_name, param_values, cat_name
-                        )
-                        base_confidence += value_confidence
-                        confidence_reasons.extend(value_reasons)
                         break
-                if param_matched:
+                if matched and cat_name in matched_patterns_detail:
                     break
             
             # Check extension patterns
             for compiled in pattern.compiled_ext:
                 if compiled.search(path):
-                    ext_matched = True
+                    matched = True
                     matched_patterns_detail[cat_name].append(f"ext:{compiled.pattern}")
-                    base_confidence += 0.1
                     break
             
-            # Determine if this is a valid match
-            if pattern.require_params:
-                matched = param_matched
-            else:
-                matched = path_matched or param_matched or ext_matched
-            
             if matched:
-                # Clamp confidence to 0.0-1.0
-                final_confidence = max(0.0, min(1.0, base_confidence))
-                
-                # Only include if meets minimum confidence
-                if final_confidence >= min_confidence:
-                    matched_categories.append(cat_name)
-                    matched_severities.append(pattern.severity)
-                    category_confidence[cat_name] = final_confidence
-                    all_confidence_reasons.extend(confidence_reasons)
+                matched_categories.append(cat_name)
+                matched_severities.append(pattern.severity)
         
         if matched_categories:
-            # Calculate overall confidence as weighted average
-            overall_confidence = sum(category_confidence.values()) / len(category_confidence)
-            
             return MatchedURL(
                 url=url,
                 domain=domain,
@@ -309,8 +175,6 @@ class URLAnalyzer:
                 categories=matched_categories,
                 severities=matched_severities,
                 matched_patterns=dict(matched_patterns_detail),
-                confidence=round(overall_confidence, 2),
-                confidence_reasons=list(set(all_confidence_reasons)),  # Dedupe reasons
             )
         
         return None
@@ -321,7 +185,6 @@ class URLAnalyzer:
         categories: Optional[List[str]] = None,
         deduplicate: bool = True,
         min_severity: Optional[Severity] = None,
-        min_confidence: float = 0.0,
     ) -> AnalysisResult:
         """
         Analyze a list of URLs.
@@ -331,7 +194,6 @@ class URLAnalyzer:
             categories: Optional list of categories to filter by
             deduplicate: Whether to remove duplicate URLs
             min_severity: Minimum severity level to include
-            min_confidence: Minimum confidence score (0.0-1.0)
         
         Returns:
             AnalysisResult containing categorized matches
@@ -361,8 +223,8 @@ class URLAnalyzer:
             
             result.unique_urls += 1
             
-            # Analyze URL with confidence filtering
-            match = self.match_url(url, categories, min_confidence)
+            # Analyze URL
+            match = self.match_url(url, categories)
             
             if match:
                 # Filter by minimum severity if specified
@@ -382,9 +244,6 @@ class URLAnalyzer:
                 
                 # Categorize by domain
                 result.by_domain[match.domain].append(match)
-        
-        # Sort all matches by confidence (highest first)
-        result.all_matches.sort(key=lambda x: x.confidence, reverse=True)
         
         return result
     

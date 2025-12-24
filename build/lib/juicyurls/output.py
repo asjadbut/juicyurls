@@ -237,28 +237,16 @@ class OutputFormatter:
         """Format a single matched URL."""
         severity_str = self._format_severity(match.highest_severity)
         
-        # Format confidence indicator
-        if match.confidence >= 0.7:
-            conf_indicator = self._colorize("★★★", Colors.BRIGHT_GREEN)
-        elif match.confidence >= 0.5:
-            conf_indicator = self._colorize("★★☆", Colors.YELLOW)
-        elif match.confidence >= 0.3:
-            conf_indicator = self._colorize("★☆☆", Colors.DIM)
-        else:
-            conf_indicator = self._colorize("☆☆☆", Colors.DIM)
-        
         if self.config.verbose:
-            output.write(f"\n  {severity_str} {conf_indicator} (confidence: {match.confidence:.0%})\n")
+            output.write(f"\n  {severity_str}\n")
             output.write(f"  URL: {self._colorize(match.url, Colors.BRIGHT_WHITE)}\n")
             output.write(f"  Categories: {', '.join(match.categories)}\n")
             if match.params:
                 output.write(f"  Parameters: {', '.join(match.params.keys())}\n")
-            if match.confidence_reasons:
-                output.write(f"  Why: {'; '.join(match.confidence_reasons[:3])}\n")
             output.write(f"  Matched: {match.matched_patterns}\n")
         else:
             categories = self._colorize(f"[{', '.join(match.categories)}]", Colors.CYAN)
-            output.write(f"  {conf_indicator} {match.url} {categories}\n")
+            output.write(f"  {match.url} {categories}\n")
     
     def format_json(self, result: AnalysisResult, output: TextIO):
         """Format output as JSON."""
