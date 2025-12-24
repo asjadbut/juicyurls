@@ -1,0 +1,291 @@
+# 🧃 JuicyURLs
+
+<p align="center">
+  <b>A powerful URL filtering tool for security researchers and bug bounty hunters</b>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python 3.8+">
+  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
+  <img src="https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg" alt="Platform">
+</p>
+
+---
+
+## 🎯 What is JuicyURLs?
+
+JuicyURLs is a smart URL filtering tool designed for **bug bounty hunters** and **security researchers**. It takes the massive output from tools like `waybackurls` or `gau` and filters out the noise, highlighting only the **juicy** URLs that are most likely to contain security vulnerabilities.
+
+### The Problem
+
+When running reconnaissance tools like `waybackurls` or `gau`, you often get thousands (or hundreds of thousands) of URLs. Most of these are static assets, duplicate pages, or other uninteresting endpoints. Finding the potentially vulnerable endpoints in this sea of noise is time-consuming and tedious.
+
+### The Solution
+
+JuicyURLs automatically categorizes URLs by potential vulnerability type:
+- 🔴 **Critical**: RCE, SSTI
+- 🟠 **High**: SQLi, IDOR, LFI/RFI, SSRF, XXE
+- 🟡 **Medium**: Open Redirect, XSS, File Upload, Auth endpoints
+- 🔵 **Low**: API endpoints, GraphQL, WebSockets
+- ⚪ **Info**: Sensitive files, backups, config files
+
+## ✨ Features
+
+- 🎯 **Smart Categorization** - Automatically identifies 15+ vulnerability categories
+- 🔍 **Pattern Matching** - 500+ patterns for paths, parameters, and file extensions
+- 🧹 **Deduplication** - Removes duplicate URLs automatically
+- 📊 **Statistics** - Shows analysis summary and breakdowns
+- 🎨 **Color Output** - Beautiful, color-coded terminal output
+- 📁 **Multiple Formats** - Export as JSON, CSV, or plain text
+- 🔧 **Flexible Input** - File, stdin, or direct domain scanning
+- ⚡ **Fast** - Pure Python, no external dependencies
+- 🔗 **Pipeline Ready** - Works seamlessly with waybackurls, gau, etc.
+
+## 🚀 Installation
+
+### From Source (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/juicyurls.git
+cd juicyurls
+
+# Install in development mode
+pip install -e .
+
+# Or install directly
+pip install .
+```
+
+### Quick Install
+
+```bash
+pip install git+https://github.com/yourusername/juicyurls.git
+```
+
+### Manual (No Install)
+
+```bash
+# Just run directly
+python -m juicyurls --help
+```
+
+## 📖 Usage
+
+### Basic Usage
+
+```bash
+# Pipe from waybackurls
+echo "example.com" | waybackurls | juicyurls
+
+# Pipe from gau
+echo "example.com" | gau | juicyurls
+
+# From a file
+juicyurls -f urls.txt
+
+# Direct domain scanning (uses gau by default)
+juicyurls -d example.com
+
+# Use waybackurls instead
+juicyurls -d example.com --tool waybackurls
+
+# Use both tools
+juicyurls -d example.com --tool both
+```
+
+### Filter by Category
+
+```bash
+# Only show SQL injection and IDOR candidates
+juicyurls -f urls.txt -c sqli idor
+
+# Only show high severity and above
+juicyurls -f urls.txt -s high
+
+# Exclude certain categories
+juicyurls -f urls.txt --exclude info_disclosure dangerous_ext
+```
+
+### Output Formats
+
+```bash
+# JSON output
+juicyurls -f urls.txt --format json -o results.json
+
+# CSV output
+juicyurls -f urls.txt --format csv -o results.csv
+
+# URLs only (for piping to other tools)
+juicyurls -f urls.txt --format urls > filtered_urls.txt
+
+# Detailed output with match information
+juicyurls -f urls.txt --format detailed
+```
+
+### Grouping Options
+
+```bash
+# Group by severity (default)
+juicyurls -f urls.txt --group-by severity
+
+# Group by category
+juicyurls -f urls.txt --group-by category
+
+# Group by domain
+juicyurls -f urls.txt --group-by domain
+```
+
+### Other Options
+
+```bash
+# Quiet mode - URLs only, no banner/stats
+juicyurls -f urls.txt -q
+
+# No colors (for piping)
+juicyurls -f urls.txt --no-color
+
+# Verbose mode with match details
+juicyurls -f urls.txt -v
+
+# List all categories
+juicyurls --list-categories
+```
+
+## 🎯 Vulnerability Categories
+
+| Category | Severity | Description |
+|----------|----------|-------------|
+| `rce` | 🔴 Critical | Remote Code Execution patterns |
+| `ssti` | 🔴 Critical | Server-Side Template Injection |
+| `sqli` | 🟠 High | SQL Injection candidates |
+| `idor` | 🟠 High | Insecure Direct Object References |
+| `lfi_rfi` | 🟠 High | Local/Remote File Inclusion |
+| `ssrf` | 🟠 High | Server-Side Request Forgery |
+| `xxe` | 🟠 High | XML External Entity Injection |
+| `sensitive_files` | 🟠 High | Exposed sensitive files |
+| `redirect` | 🟡 Medium | Open Redirect vulnerabilities |
+| `xss` | 🟡 Medium | Cross-Site Scripting candidates |
+| `auth` | 🟡 Medium | Authentication/Session endpoints |
+| `upload` | 🟡 Medium | File upload endpoints |
+| `admin_debug` | 🟡 Medium | Admin/Debug endpoints |
+| `backup` | 🟡 Medium | Backup files |
+| `cloud` | 🟡 Medium | Cloud storage endpoints |
+| `graphql` | 🟡 Medium | GraphQL endpoints |
+| `api` | 🔵 Low | API endpoints |
+| `websocket` | 🔵 Low | WebSocket endpoints |
+| `info_disclosure` | 🔵 Low | Information disclosure |
+| `dangerous_ext` | ⚪ Info | Interesting file extensions |
+
+## 🔧 Advanced Usage
+
+### Pipeline Examples
+
+```bash
+# Full recon pipeline
+subfinder -d example.com | httpx | gau | juicyurls -s high -o high_severity.txt
+
+# Find all IDOR candidates and test with ffuf
+juicyurls -f urls.txt -c idor --format urls | while read url; do
+    ffuf -u "$url" -w ids.txt
+done
+
+# Extract SQLi candidates for sqlmap
+juicyurls -f urls.txt -c sqli --format urls > sqli_candidates.txt
+sqlmap -m sqli_candidates.txt --batch
+
+# Find all API endpoints
+juicyurls -f urls.txt -c api graphql --format json | jq '.matches[].url'
+```
+
+### Combining with Other Tools
+
+```bash
+# With hakrawler
+echo "https://example.com" | hakrawler | juicyurls
+
+# With katana
+katana -u https://example.com | juicyurls
+
+# With gospider
+gospider -s "https://example.com" -o output -c 10 -d 1
+cat output/* | juicyurls
+```
+
+## 📊 Example Output
+
+```
+     ██╗██╗   ██╗██╗ ██████╗██╗   ██╗██╗   ██╗██████╗ ██╗     ███████╗
+     ██║██║   ██║██║██╔════╝╚██╗ ██╔╝██║   ██║██╔══██╗██║     ██╔════╝
+     ██║██║   ██║██║██║      ╚████╔╝ ██║   ██║██████╔╝██║     ███████╗
+██   ██║██║   ██║██║██║       ╚██╔╝  ██║   ██║██╔══██╗██║     ╚════██║
+╚█████╔╝╚██████╔╝██║╚██████╗   ██║   ╚██████╔╝██║  ██║███████╗███████║
+ ╚════╝  ╚═════╝ ╚═╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝
+
+        🎯 Bug Bounty URL Analyzer - Find the Juice! 🧃
+
+📊 Analysis Statistics
+==================================================
+  Total URLs processed: 15000
+  Unique URLs: 8432
+  Matched URLs: 1247
+  Domains found: 3
+
+  By Severity:
+    CRITICAL: 12
+    HIGH: 234
+    MEDIUM: 567
+    LOW: 298
+    INFO: 136
+
+🔴 CRITICAL (12 URLs)
+------------------------------------------------------------
+  https://example.com/api/v1/exec?cmd=test [rce]
+  https://example.com/template/preview?tpl=header [ssti]
+
+🟠 HIGH (234 URLs)
+------------------------------------------------------------
+  https://example.com/api/user/12345 [idor]
+  https://example.com/search?id=1&sort=asc [sqli]
+  https://example.com/download?file=report.pdf [lfi_rfi]
+  https://example.com/proxy?url=http://internal [ssrf]
+```
+
+## 🛠️ Requirements
+
+- Python 3.8 or higher
+- No external dependencies (uses only standard library)
+
+### Optional Tools for URL Gathering
+
+- [waybackurls](https://github.com/tomnomnom/waybackurls) - `go install github.com/tomnomnom/waybackurls@latest`
+- [gau](https://github.com/lc/gau) - `go install github.com/lc/gau/v2/cmd/gau@latest`
+
+## 🤝 Contributing
+
+Contributions are welcome! Here are some ways you can help:
+
+1. **Add new patterns** - Found a pattern that catches vulnerabilities? Submit a PR!
+2. **Report false positives** - Help us tune the patterns
+3. **Add new features** - Check the issues for feature requests
+4. **Documentation** - Help improve the docs
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## ⚠️ Disclaimer
+
+This tool is intended for **authorized security testing** and **bug bounty programs** only. Always ensure you have proper authorization before testing any systems. The authors are not responsible for any misuse of this tool.
+
+## 🙏 Acknowledgments
+
+- Inspired by [waybackurls](https://github.com/tomnomnom/waybackurls) by tomnomnom
+- Inspired by [gau](https://github.com/lc/gau) by lc
+- Thanks to the bug bounty community for pattern contributions
+
+---
+
+<p align="center">
+  Made with ❤️ for the Bug Bounty Community
+</p>

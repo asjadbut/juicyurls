@@ -1,0 +1,2 @@
+[console_scripts]
+juicyurls = juicyurls.cli:main

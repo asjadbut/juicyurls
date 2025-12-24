@@ -1,0 +1,64 @@
+[project]
+name = "juicyurls"
+version = "1.0.0"
+description = "A powerful URL filtering tool for security researchers and bug bounty hunters"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "Security Researcher", email = "security@example.com"}
+]
+keywords = [
+    "security",
+    "bug-bounty",
+    "penetration-testing",
+    "url-filtering",
+    "waybackurls",
+    "gau",
+    "reconnaissance",
+    "web-security"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Internet :: WWW/HTTP",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/juicyurls"
+Documentation = "https://github.com/yourusername/juicyurls#readme"
+Repository = "https://github.com/yourusername/juicyurls"
+Issues = "https://github.com/yourusername/juicyurls/issues"
+
+[project.scripts]
+juicyurls = "juicyurls.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["juicyurls*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"

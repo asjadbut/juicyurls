@@ -1,0 +1,8 @@
+# No external dependencies required - uses only Python standard library
+# This makes the tool portable and easy to install
+
+# Optional development dependencies (uncomment if needed):
+# pytest>=7.0.0
+# black>=22.0.0
+# isort>=5.10.0
+# mypy>=0.990
