@@ -271,6 +271,9 @@ class PatternManager:
                 r"^ticketid$", r"^ticket_id$", r"^ticketId$",
                 r"^reportid$", r"^report_id$", r"^reportId$",
                 r"^uuid$", r"^guid$",
+                # Generic *Id pattern - catches leagueId, teamId, orgId, etc.
+                r"^\w+[Ii]d$",  # camelCase: leagueId, teamId
+                r"^\w+_id$",    # snake_case: league_id, team_id
             ],
             exclude_patterns=[
                 r"\.(js|css|jpg|jpeg|png|gif|svg|ico|woff|woff2)(\?|$)",
@@ -534,6 +537,19 @@ class PatternManager:
                 r"/rest/", r"/v1/", r"/v2/", r"/v3/",
                 r"/swagger", r"/openapi", r"/api-docs",
                 r"/redoc", r"/docs/api",
+                # Sensitive API endpoints
+                r"/settings$", r"/config$", r"/configuration$",
+                r"/preferences$", r"/options$",
+                r"/account/settings", r"/user/settings",
+                r"/api/.*/settings", r"/api/.*/config",
+            ],
+            param_patterns=[
+                # API key parameters - potential exposed keys
+                r"^api[-_]?key$", r"^apikey$", r"^app[-_]?key$", r"^appkey$",
+                r"^access[-_]?key$", r"^secret[-_]?key$", r"^auth[-_]?key$",
+                r"^client[-_]?id$", r"^client[-_]?secret$",
+                r"^token$", r"^auth[-_]?token$", r"^access[-_]?token$",
+                r"^bearer$", r"^api[-_]?token$", r"^secret$",
             ],
             exclude_patterns=[
                 r"/static/", r"/assets/", r"/dist/",
@@ -579,6 +595,478 @@ class PatternManager:
                 r"\.html$", r"\.htm$", r"\.jpg", r"\.png", r"\.gif",
             ],
         )
+        
+        # ==================== INTERESTING FILES ====================
+        
+        # Backup & Archive Files - High value targets
+        self.patterns["interesting_files"] = VulnPattern(
+            name="Interesting Files",
+            severity=Severity.HIGH,
+            description="Backup files, archives, and source code that may leak sensitive data",
+            path_patterns=[
+                # Backup files
+                r"\.bak$", r"\.backup$", r"\.old$", r"\.orig$",
+                r"\.save$", r"\.saved$", r"\.copy$", r"\.tmp$",
+                r"~$",  # vim backup
+                r"\.swp$", r"\.swo$",  # vim swap
+                # Source code backups
+                r"\.php\.bak$", r"\.php~$", r"\.php\.old$", r"\.php\.orig$",
+                r"\.asp\.bak$", r"\.aspx\.bak$", r"\.jsp\.bak$",
+                r"\.js\.bak$", r"\.py\.bak$",
+                # Archive files
+                r"\.zip$", r"\.tar$", r"\.tar\.gz$", r"\.tgz$",
+                r"\.tar\.bz2$", r"\.rar$", r"\.7z$", r"\.gz$",
+                # Database dumps
+                r"\.sql$", r"\.sql\.gz$", r"\.sql\.zip$",
+                r"\.dump$", r"\.db$", r"\.sqlite$", r"\.mdb$",
+                # Config files
+                r"\.env$", r"\.env\.local$", r"\.env\.prod$", r"\.env\.dev$",
+                r"\.env\.example$", r"\.env\.sample$",
+                r"\.htaccess$", r"\.htpasswd$",
+                r"web\.config$", r"\.npmrc$", r"\.netrc$",
+                # Key files
+                r"\.pem$", r"\.key$", r"\.crt$", r"\.pfx$", r"\.p12$",
+                r"id_rsa$", r"id_dsa$", r"id_ecdsa$",
+                # Log files (may contain sensitive data)
+                r"\.log$", r"debug\.log$", r"error\.log$", r"access\.log$",
+                # Other interesting
+                r"\.DS_Store$", r"Thumbs\.db$",
+                r"\.git/", r"\.svn/", r"\.hg/",
+                r"/\.git/config$", r"/\.git/HEAD$",
+                # Common backup naming patterns
+                r"backup", r"dump", r"export", r"_backup",
+                r"_old$", r"_bak$", r"_copy$",
+                r"\d{4}[-_]\d{2}[-_]\d{2}",  # Date patterns in filename
+            ],
+            exclude_patterns=[
+                r"/node_modules/", r"/vendor/", r"/bower_components/",
+            ],
+        )
+        
+        # ==================== KNOWN CVE / VULNERABILITY PATTERNS ====================
+        
+        self._load_cve_patterns()
+        
+        # ==================== TECHNOLOGY DETECTION ====================
+        
+        self._load_technology_patterns()
+    
+    def _load_cve_patterns(self):
+        """Load patterns based on real CVEs and disclosed vulnerabilities."""
+        
+        # WordPress Vulnerabilities - From real CVEs and bug bounty reports
+        self.patterns["wp_vulns"] = VulnPattern(
+            name="WordPress Vulnerabilities",
+            severity=Severity.HIGH,
+            description="Known WordPress vulnerable endpoints and CVEs",
+            path_patterns=[
+                # User Enumeration - CVE-2017-5487
+                r"/wp-json/wp/v2/users",
+                r"/\?author=\d+",
+                r"/\?rest_route=/wp/v2/users",
+                # XML-RPC attacks - CVE-2015-1579, DDoS amplification
+                r"/xmlrpc\.php$",
+                # wp-config exposure
+                r"/wp-config\.php", r"/wp-config\.bak", r"/wp-config\.txt",
+                r"/wp-config\.php\.bak", r"/wp-config\.old",
+                # Debug log exposure - information disclosure
+                r"/wp-content/debug\.log",
+                # Plugin/theme vulnerabilities - common paths
+                r"/wp-content/plugins/.*/readme\.txt",
+                r"/wp-content/plugins/.*/changelog\.txt",
+                # Arbitrary file download - many CVEs
+                r"/wp-admin/admin-ajax\.php\?action=download",
+                r"/wp-admin/admin-post\.php\?action=download",
+                # SSRF via oEmbed
+                r"/wp-json/oembed/",
+                # Rest API sensitive endpoints
+                r"/wp-json/wp/v2/settings",
+                r"/wp-json/wp/v2/posts\?.*status=draft",
+                # File Manager plugins - CVE-2020-25213
+                r"/wp-content/plugins/wp-file-manager/",
+                # Duplicator plugin - CVE-2020-11738
+                r"/wp-content/backups-dup-lite/",
+                r"\.dup-installer/",
+                # WooCommerce
+                r"/wp-json/wc/v[123]/orders",
+                r"/wp-json/wc/v[123]/customers",
+            ],
+            param_patterns=[
+                r"^action$",  # admin-ajax action parameter
+            ],
+        )
+        
+        # Drupal Vulnerabilities
+        self.patterns["drupal_vulns"] = VulnPattern(
+            name="Drupal Vulnerabilities",
+            severity=Severity.HIGH,
+            description="Known Drupal vulnerable endpoints - Drupalgeddon etc",
+            path_patterns=[
+                # Drupalgeddon 2 - CVE-2018-7600
+                r"/user/register\?element_parents=",
+                r"/user/password\?name\[",
+                # Drupalgeddon 3 - CVE-2018-7602
+                r"/admin/content/file/",
+                # User enumeration
+                r"/user/\d+$",
+                r"/\?q=user/\d+",
+                # Info disclosure
+                r"/CHANGELOG\.txt$",
+                r"/INSTALL\.txt$", 
+                r"/UPGRADE\.txt$",
+                r"/core/CHANGELOG\.txt",
+                # Private files access
+                r"/system/files/",
+                r"/sites/default/files/private/",
+                # SQL injection points
+                r"/\?q=node&.*destination=",
+            ],
+        )
+        
+        # Apache/Tomcat/Java Vulnerabilities  
+        self.patterns["java_vulns"] = VulnPattern(
+            name="Java/Tomcat Vulnerabilities",
+            severity=Severity.CRITICAL,
+            description="Apache Struts, Log4j, Tomcat CVEs",
+            path_patterns=[
+                # Apache Struts RCE - CVE-2017-5638, CVE-2018-11776
+                r"\.action\?", r"\.do\?",
+                r"/struts/", r"/struts2/",
+                # Tomcat manager - default creds common
+                r"/manager/html$", r"/manager/status$",
+                r"/host-manager/", r"/manager/text/",
+                # Tomcat examples - info disclosure
+                r"/examples/jsp/", r"/examples/servlets/",
+                r"/docs/", r"/sample/",
+                # JBoss - CVE-2017-12149
+                r"/invoker/", r"/jmx-console/", r"/web-console/",
+                r"/admin-console/",
+                # Jenkins - CVE-2018-1000861, CVE-2019-1003000
+                r"/jenkins/", r"/script$", r"/scriptText$",
+                r"/computer/\(master\)/script",
+                r"/securityRealm/user/admin/",
+                # Log4j - CVE-2021-44228 (test points)
+                r"/\$\{jndi:", r"/\$%7bjndi:",
+                # Spring Boot Actuator - info disclosure
+                r"/actuator/", r"/actuator/env", r"/actuator/heapdump",
+                r"/actuator/mappings", r"/actuator/configprops",
+                r"/env$", r"/heapdump$", r"/mappings$",
+                # Spring Cloud Gateway - CVE-2022-22947
+                r"/gateway/routes", r"/gateway/refresh",
+                # Apache Solr - CVE-2019-17558
+                r"/solr/admin/", r"/solr/\w+/config",
+            ],
+        )
+        
+        # PHP Known Vulnerabilities
+        self.patterns["php_vulns"] = VulnPattern(
+            name="PHP Vulnerabilities",
+            severity=Severity.HIGH,
+            description="PHP application CVEs and common vulns",
+            path_patterns=[
+                # phpMyAdmin - CVE-2018-12613
+                r"/phpmyadmin/", r"/pma/", r"/myadmin/",
+                r"/phpMyAdmin/",
+                # PHPUnit RCE - CVE-2017-9841
+                r"/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin\.php",
+                # Laravel debug mode - info disclosure
+                r"/_ignition/execute-solution",
+                r"/_debugbar/",
+                # PHP info exposure
+                r"/phpinfo\.php", r"/info\.php", r"/test\.php",
+                r"/i\.php", r"/php_info\.php",
+                # PHP-CGI argument injection - CVE-2012-1823
+                r"\.php\?-s$", r"\.php\?-d\+",
+                # Adminer - CVE-2021-21311
+                r"/adminer\.php", r"/adminer/",
+                # Webshell indicators
+                r"/c99\.php", r"/r57\.php", r"/shell\.php",
+                r"/cmd\.php", r"/wso\.php",
+                # CMS paths
+                r"/typo3/", r"/contao/",
+            ],
+        )
+        
+        # .NET / IIS Vulnerabilities
+        self.patterns["dotnet_vulns"] = VulnPattern(
+            name=".NET/IIS Vulnerabilities",
+            severity=Severity.HIGH,
+            description="ASP.NET and IIS known vulnerabilities",
+            path_patterns=[
+                # Telerik UI - CVE-2019-18935, CVE-2017-9248
+                r"/Telerik\.Web\.UI\.WebResource\.axd",
+                r"/Telerik\.Web\.UI\.DialogHandler\.aspx",
+                # IIS shortname - info disclosure
+                r"/\*~1\*", r"/\*~1\*/",
+                # .NET trace - info disclosure
+                r"/trace\.axd$",
+                r"/elmah\.axd$",
+                # Exchange Server - ProxyLogon CVE-2021-26855
+                r"/owa/auth/", r"/ecp/",
+                r"/autodiscover/autodiscover\.json",
+                r"/mapi/nspi/", r"/rpc/",
+                # SharePoint - CVE-2019-0604
+                r"/_layouts/", r"/_vti_bin/",
+                r"/_api/web/", r"/Picker\.aspx",
+                # Debug info
+                r"/DebugInfo\.aspx",
+            ],
+        )
+        
+        # API Security Issues - From OWASP API Top 10
+        self.patterns["api_vulns"] = VulnPattern(
+            name="API Security Issues",
+            severity=Severity.HIGH,
+            description="OWASP API Top 10 and common API vulnerabilities",
+            path_patterns=[
+                # Mass assignment / BOLA endpoints
+                r"/api/v\d+/users/\d+$",
+                r"/api/v\d+/accounts/\d+$",
+                r"/api/v\d+/admin/",
+                # GraphQL introspection
+                r"/graphql$", r"/graphiql$",
+                r"/api/graphql", r"/v\d/graphql",
+                # Swagger/OpenAPI exposure
+                r"/swagger-ui", r"/swagger\.json", r"/swagger\.yaml",
+                r"/api-docs", r"/openapi\.json", r"/openapi\.yaml",
+                r"/v\d+/api-docs",
+                # Debug endpoints
+                r"/api/debug", r"/api/test", r"/api/internal",
+                # Sensitive data endpoints
+                r"/api/.*/export", r"/api/.*/download",
+                r"/api/.*/backup",
+                # Version disclosure
+                r"/api/version", r"/api/health", r"/api/status",
+            ],
+            param_patterns=[
+                r"^api_key$", r"^apikey$", r"^access_token$",
+                r"^token$", r"^secret$", r"^auth$",
+            ],
+        )
+        
+        # Git/Source Code Exposure
+        self.patterns["source_exposure"] = VulnPattern(
+            name="Source Code Exposure",
+            severity=Severity.CRITICAL,
+            description="Exposed source code, git repos, and sensitive files",
+            path_patterns=[
+                # Git exposure - very common, high impact
+                r"/\.git/HEAD$", r"/\.git/config$",
+                r"/\.git/index$", r"/\.git/logs/",
+                r"/\.git/objects/", r"/\.git/refs/",
+                # SVN exposure
+                r"/\.svn/entries$", r"/\.svn/wc\.db$",
+                # Mercurial
+                r"/\.hg/", r"/\.hgrc$",
+                # IDE files
+                r"/\.idea/", r"/\.vscode/",
+                r"/\.project$", r"/\.classpath$",
+                # Docker/K8s secrets
+                r"/\.docker/config\.json",
+                r"/kubeconfig$", r"/\.kube/config",
+                # CI/CD configs
+                r"/\.travis\.yml$", r"/\.circleci/",
+                r"/\.github/workflows/", r"/Jenkinsfile$",
+                r"/\.gitlab-ci\.yml$",
+                # Cloud credentials
+                r"/\.aws/credentials", r"/\.aws/config",
+                r"/\.boto$", r"/\.gcloud/",
+                # SSH keys
+                r"/\.ssh/id_rsa$", r"/\.ssh/id_dsa$",
+                r"/\.ssh/authorized_keys$",
+            ],
+        )
+        
+        # Authentication Bypass Patterns
+        self.patterns["auth_bypass"] = VulnPattern(
+            name="Authentication Bypass",
+            severity=Severity.CRITICAL,
+            description="Endpoints commonly vulnerable to auth bypass",
+            path_patterns=[
+                # Admin panels often misconfigured
+                r"/admin\.php$", r"/administrator\.php$",
+                r"/admin/login\.php", r"/admin/index\.php",
+                # Password reset abuse
+                r"/reset-password", r"/forgot-password",
+                r"/password/reset", r"/password/forgot",
+                # Registration endpoints
+                r"/register$", r"/signup$", r"/sign-up$",
+                r"/api/.*/register", r"/api/.*/signup",
+                # OAuth misconfigurations
+                r"/oauth/authorize", r"/oauth/token",
+                r"/oauth/callback", r"/oauth2/",
+                r"\.auth0\.com", r"/callback\?code=",
+                # JWT endpoints
+                r"/jwt/", r"/token/refresh",
+                r"/api/token$", r"/api/auth/token",
+                # SSO/SAML
+                r"/saml/", r"/sso/", r"/adfs/",
+                r"/simplesaml/",
+            ],
+            param_patterns=[
+                r"^redirect_uri$", r"^return_url$", r"^callback$",
+                r"^state$", r"^code$", r"^token$",
+            ],
+        )
+        
+        # Server Side Request Forgery - Common patterns
+        self.patterns["ssrf_vulns"] = VulnPattern(
+            name="SSRF Vulnerabilities",
+            severity=Severity.CRITICAL,
+            description="Common SSRF vulnerable endpoints from real disclosures",
+            path_patterns=[
+                # Webhook endpoints - very commonly vulnerable
+                r"/webhook", r"/webhooks/",
+                r"/api/.*/webhook", r"/hooks/",
+                # URL fetching features
+                r"/fetch", r"/proxy", r"/request",
+                r"/api/fetch", r"/api/proxy",
+                # PDF/Image generators
+                r"/pdf/", r"/screenshot/", r"/render/",
+                r"/wkhtmltopdf", r"/html2pdf",
+                r"/capture", r"/snap",
+                # Import/Export features
+                r"/import", r"/api/.*/import",
+                r"/feed", r"/rss",
+                # Avatar/Image URL
+                r"/avatar\?", r"/profile-image\?",
+                r"/image\?url=", r"/img\?src=",
+            ],
+            param_patterns=[
+                r"^url$", r"^uri$", r"^href$", r"^link$",
+                r"^src$", r"^source$", r"^target$",
+                r"^webhook$", r"^callback$", r"^endpoint$",
+                r"^proxy$", r"^fetch$", r"^load$",
+            ],
+            require_params=True,
+        )
+    
+    def _load_technology_patterns(self):
+        """Load technology/framework detection patterns."""
+        
+        # PHP Detection
+        self.tech_patterns = {
+            "php": {
+                "name": "PHP",
+                "patterns": [
+                    r"\.php(\?|$|/)", r"\.php\d(\?|$)",
+                    r"\.phtml(\?|$)", r"\.inc(\?|$)",
+                ],
+                "indicators": ["PHPSESSID", "php"]
+            },
+            "asp": {
+                "name": "ASP.NET",
+                "patterns": [
+                    r"\.asp(\?|$)", r"\.aspx(\?|$)",
+                    r"\.asmx(\?|$)", r"\.ashx(\?|$)",
+                    r"\.axd(\?|$)",
+                ],
+                "indicators": ["ASP.NET", "__VIEWSTATE", "ASPXAUTH"]
+            },
+            "java": {
+                "name": "Java",
+                "patterns": [
+                    r"\.jsp(\?|$)", r"\.jsf(\?|$)",
+                    r"\.do(\?|$)", r"\.action(\?|$)",
+                    r"/servlet/", r"/struts/", r"/spring/",
+                    r"\.faces(\?|$)", r"/jsf/",
+                ],
+                "indicators": ["JSESSIONID", "j_spring_security"]
+            },
+            "python": {
+                "name": "Python",
+                "patterns": [
+                    r"\.py(\?|$)", r"/django/", r"/flask/",
+                    r"/pyramid/", r"\.wsgi",
+                ],
+                "indicators": ["csrfmiddlewaretoken", "django"]
+            },
+            "ruby": {
+                "name": "Ruby/Rails",
+                "patterns": [
+                    r"\.rb(\?|$)", r"\.erb(\?|$)",
+                    r"/rails/", r"\.haml(\?|$)",
+                ],
+                "indicators": ["_rails", "authenticity_token"]
+            },
+            "node": {
+                "name": "Node.js",
+                "patterns": [
+                    r"/node_modules/", r"\.ejs(\?|$)",
+                    r"/express/", r"\.hbs(\?|$)",
+                ],
+                "indicators": ["connect.sid", "express"]
+            },
+            "wordpress": {
+                "name": "WordPress",
+                "patterns": [
+                    r"/wp-admin/", r"/wp-content/", r"/wp-includes/",
+                    r"/wp-login\.php", r"/wp-json/", r"/xmlrpc\.php",
+                    r"/wp-cron\.php",
+                ],
+                "indicators": ["wp-", "wordpress"]
+            },
+            "drupal": {
+                "name": "Drupal",
+                "patterns": [
+                    r"/sites/default/", r"/modules/", r"/themes/",
+                    r"/drupal/", r"\.module$", r"/node/\d+",
+                ],
+                "indicators": ["drupal", "Drupal"]
+            },
+            "joomla": {
+                "name": "Joomla",
+                "patterns": [
+                    r"/administrator/", r"/components/",
+                    r"/modules/", r"/templates/",
+                    r"option=com_", r"/joomla/",
+                ],
+                "indicators": ["joomla", "com_"]
+            },
+            "laravel": {
+                "name": "Laravel",
+                "patterns": [
+                    r"/storage/", r"/public/", r"/_debugbar/",
+                    r"/telescope/", r"/horizon/", r"/nova/",
+                ],
+                "indicators": ["laravel_session", "XSRF-TOKEN"]
+            },
+            "coldfusion": {
+                "name": "ColdFusion",
+                "patterns": [
+                    r"\.cfm(\?|$)", r"\.cfc(\?|$)",
+                    r"/CFIDE/", r"/cfadmin/",
+                ],
+                "indicators": ["CFID", "CFTOKEN"]
+            },
+            "perl": {
+                "name": "Perl/CGI",
+                "patterns": [
+                    r"\.pl(\?|$)", r"\.cgi(\?|$)",
+                    r"/cgi-bin/",
+                ],
+                "indicators": []
+            },
+        }
+        
+        # Compile technology patterns
+        self.compiled_tech = {}
+        for tech, data in self.tech_patterns.items():
+            self.compiled_tech[tech] = {
+                "name": data["name"],
+                "compiled": [re.compile(p, re.IGNORECASE) for p in data["patterns"]],
+                "indicators": data["indicators"]
+            }
+    
+    def detect_technologies(self, url: str) -> List[str]:
+        """Detect technologies/frameworks from a URL."""
+        detected = []
+        for tech, data in self.compiled_tech.items():
+            for pattern in data["compiled"]:
+                if pattern.search(url):
+                    detected.append(data["name"])
+                    break
+        return detected
     
     def get_pattern(self, name: str) -> Optional[VulnPattern]:
         """Get a specific pattern by name."""

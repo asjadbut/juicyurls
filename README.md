@@ -31,11 +31,14 @@ JuicyURLs automatically categorizes URLs by potential vulnerability type:
 
 ## ✨ Features
 
-- 🎯 **Smart Categorization** - Automatically identifies 15+ vulnerability categories
-- 🔍 **Pattern Matching** - 500+ patterns for paths, parameters, and file extensions
-- 🧹 **Deduplication** - Removes duplicate URLs automatically
-- 📊 **Statistics** - Shows analysis summary and breakdowns
-- 🎨 **Color Output** - Beautiful, color-coded terminal output
+- 🎯 **Smart Categorization** - Automatically identifies 25+ vulnerability categories
+- 🔍 **Real CVE Patterns** - Patterns based on actual CVEs (Log4j, Drupalgeddon, ProxyLogon, etc.)
+- 🧠 **Confidence Scoring** - Analyzes parameter VALUES, not just names, to reduce false positives
+- 🔧 **Technology Detection** - Identifies tech stacks (PHP, Java, WordPress, Laravel, etc.)
+- 📁 **Interesting Files** - Finds backups, configs, source code leaks, .git exposure
+- 🎯 **Smart Deduplication** - Groups similar URLs (e.g., `?id=1` and `?id=2`) keeping only unique patterns
+- 📊 **Statistics** - Shows analysis summary, tech breakdown, and confidence levels
+- 🎨 **Color Output** - Beautiful, color-coded terminal output with confidence stars (★★★)
 - 📁 **Multiple Formats** - Export as JSON, CSV, or plain text
 - 🔧 **Flexible Input** - File, stdin, or direct domain scanning
 - ⚡ **Fast** - Pure Python, no external dependencies
@@ -150,9 +153,48 @@ juicyurls -f urls.txt -v
 
 # List all categories
 juicyurls --list-categories
+
+# List detectable technologies
+juicyurls --list-tech
+```
+
+### Confidence Filtering
+
+JuicyURLs analyzes parameter **values** (not just names) to calculate confidence scores:
+
+```bash
+# Only show high confidence results (recommended)
+juicyurls -f urls.txt --high-confidence
+
+# Custom minimum confidence (0.0 to 1.0)
+juicyurls -f urls.txt --min-confidence 0.5
+
+# Disable smart deduplication (keep all similar URLs)
+juicyurls -f urls.txt --no-smart-dedupe
+
+# Keep up to 5 URLs per similar pattern (default: 1)
+juicyurls -f urls.txt --max-per-pattern 5
+```
+
+### Technology & File Filtering
+
+```bash
+# Filter by detected technology
+juicyurls -f urls.txt --tech PHP WordPress
+
+# Find only interesting files (backups, configs, source leaks)
+juicyurls -f urls.txt --interesting-files
+
+# Find WordPress vulnerabilities only
+juicyurls -f urls.txt -c wp_vulns
+
+# Find all Java/Spring vulnerabilities (Log4j, Struts, etc.)
+juicyurls -f urls.txt -c java_vulns
 ```
 
 ## 🎯 Vulnerability Categories
+
+### Core Vulnerability Patterns
 
 | Category | Severity | Description |
 |----------|----------|-------------|
@@ -175,15 +217,63 @@ juicyurls --list-categories
 | `api` | 🔵 Low | API endpoints |
 | `websocket` | 🔵 Low | WebSocket endpoints |
 | `info_disclosure` | 🔵 Low | Information disclosure |
-| `dangerous_ext` | ⚪ Info | Interesting file extensions |
+
+### Real CVE / Known Vulnerability Patterns
+
+| Category | Severity | CVEs & Vulnerabilities |
+|----------|----------|------------------------|
+| `wp_vulns` | 🟠 High | WordPress: User enum (CVE-2017-5487), xmlrpc attacks, debug.log exposure, plugin vulns (CVE-2020-25213) |
+| `drupal_vulns` | 🟠 High | Drupalgeddon 2/3 (CVE-2018-7600, CVE-2018-7602), user enumeration |
+| `java_vulns` | 🔴 Critical | Apache Struts RCE (CVE-2017-5638), Log4j (CVE-2021-44228), Spring Boot Actuator, Tomcat Manager |
+| `php_vulns` | 🟠 High | PHPUnit RCE (CVE-2017-9841), phpMyAdmin, Laravel debug mode, Adminer |
+| `dotnet_vulns` | 🟠 High | Telerik UI (CVE-2019-18935), Exchange ProxyLogon (CVE-2021-26855), SharePoint |
+| `api_vulns` | 🟠 High | OWASP API Top 10, Swagger exposure, GraphQL introspection |
+| `source_exposure` | 🔴 Critical | .git exposure, .svn, CI/CD configs, cloud credentials, SSH keys |
+| `auth_bypass` | 🔴 Critical | Admin panels, OAuth misconfig, JWT endpoints, SSO/SAML |
+| `ssrf_vulns` | 🔴 Critical | Webhooks, URL fetching, PDF generators, import features |
+| `interesting_files` | 🟠 High | Backups (.bak, .sql), configs (.env), source leaks (.php~) |
+
+### 🔧 Technology Detection
+
+JuicyURLs automatically detects technology stacks:
+
+| Technology | Indicators |
+|------------|------------|
+| PHP | `.php`, `PHPSESSID` |
+| ASP.NET | `.asp`, `.aspx`, `__VIEWSTATE` |
+| Java | `.jsp`, `.do`, `.action`, `JSESSIONID` |
+| Python | Django/Flask patterns |
+| Ruby/Rails | `authenticity_token` |
+| Node.js | Express patterns |
+| WordPress | `/wp-admin/`, `/wp-content/` |
+| Drupal | `/sites/default/` |
+| Laravel | `/_debugbar/`, `XSRF-TOKEN` |
 
 ## 🔧 Advanced Usage
+
+### Confidence Scoring
+
+JuicyURLs analyzes parameter **values** to determine confidence:
+
+```
+★★★ High (70%+)   - Multiple strong indicators (suspicious values + matching paths)
+★★☆ Medium (50%+) - Good indicators (API key params, numeric IDs, etc.)
+★☆☆ Low (30%+)    - Basic pattern match
+☆☆☆ Minimal       - Weak match, likely false positive
+```
+
+**What boosts confidence:**
+- Parameter values containing `internal`, `admin`, `test`, `debug`, `secret`
+- API key-like values (`sk_live_xxx`, long alphanumeric strings)
+- URL values in SSRF-prone params (`?url=http://...`)
+- File path values in LFI params (`?file=../etc/passwd`)
+- Numeric IDs in IDOR params (`?userId=123`)
 
 ### Pipeline Examples
 
 ```bash
-# Full recon pipeline
-subfinder -d example.com | httpx | gau | juicyurls -s high -o high_severity.txt
+# Full recon pipeline with high confidence only
+subfinder -d example.com | httpx | gau | juicyurls --high-confidence -o high_severity.txt
 
 # Find all IDOR candidates and test with ffuf
 juicyurls -f urls.txt -c idor --format urls | while read url; do
@@ -194,8 +284,13 @@ done
 juicyurls -f urls.txt -c sqli --format urls > sqli_candidates.txt
 sqlmap -m sqli_candidates.txt --batch
 
-# Find all API endpoints
-juicyurls -f urls.txt -c api graphql --format json | jq '.matches[].url'
+# Find all API endpoints with exposed keys
+juicyurls -f urls.txt -c api api_vulns --high-confidence --format json | jq '.matches[].url'
+
+# Hunt for specific CVEs
+juicyurls -f urls.txt -c java_vulns  # Log4j, Struts, Spring
+juicyurls -f urls.txt -c wp_vulns    # WordPress vulns
+juicyurls -f urls.txt -c source_exposure  # Git exposure
 ```
 
 ### Combining with Other Tools
@@ -226,29 +321,37 @@ cat output/* | juicyurls
 
 📊 Analysis Statistics
 ==================================================
-  Total URLs processed: 15000
-  Unique URLs: 8432
-  Matched URLs: 1247
-  Domains found: 3
+  Total URLs processed: 74779
+  Unique URLs: 52341
+  Matched URLs: 288
+  Similar URLs grouped: 1311 (kept max per pattern)
+  Domains found: 1
 
   By Severity:
     CRITICAL: 12
-    HIGH: 234
-    MEDIUM: 567
-    LOW: 298
-    INFO: 136
+    HIGH: 156
+    MEDIUM: 87
+    LOW: 33
+
+  By Category:
+    idor: 89
+    api_vulns: 45
+    sqli: 34
+    ...
+
+  🔧 Technologies Detected:
+    PHP (142), WordPress (89), Java (23)
 
 🔴 CRITICAL (12 URLs)
 ------------------------------------------------------------
-  https://example.com/api/v1/exec?cmd=test [rce]
-  https://example.com/template/preview?tpl=header [ssti]
+  ★★★ https://example.com/.git/config [source_exposure] 
+  ★★☆ https://example.com/actuator/heapdump [java_vulns]
 
-🟠 HIGH (234 URLs)
+🟠 HIGH (156 URLs)
 ------------------------------------------------------------
-  https://example.com/api/user/12345 [idor]
-  https://example.com/search?id=1&sort=asc [sqli]
-  https://example.com/download?file=report.pdf [lfi_rfi]
-  https://example.com/proxy?url=http://internal [ssrf]
+  ★★☆ https://example.com/api/v2/settings?appKey=internal [idor, api] 🔧PHP
+  ★★☆ https://example.com/wp-json/wp/v2/users [wp_vulns] 🔧WordPress
+  ★☆☆ https://example.com/user/12345 [idor]
 ```
 
 ## 🛠️ Requirements

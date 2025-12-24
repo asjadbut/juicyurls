@@ -162,6 +162,23 @@ def list_categories(pattern_manager: PatternManager):
     print("\n")
 
 
+def list_technologies(pattern_manager: PatternManager):
+    """List all detectable technologies."""
+    print("\n🔧 Detectable Technologies:\n")
+    print("-" * 70)
+    
+    for tech_key, tech_data in sorted(pattern_manager.tech_patterns.items()):
+        print(f"\n  📦 {tech_data['name']}")
+        print(f"     Key: {tech_key}")
+        if tech_data['indicators']:
+            print(f"     Indicators: {', '.join(tech_data['indicators'])}")
+    
+    print("\n")
+    print("Usage: juicyurls -f urls.txt --tech PHP WordPress")
+    print("       juicyurls -d example.com --tech java")
+    print("\n")
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -246,6 +263,17 @@ Examples:
         metavar='N',
         help='Max URLs to keep per similar endpoint pattern (default: 1). Use with smart dedupe.'
     )
+    filter_group.add_argument(
+        '--tech',
+        nargs='+',
+        metavar='TECH',
+        help='Filter by detected technology (e.g., PHP WordPress Java ASP.NET)'
+    )
+    filter_group.add_argument(
+        '--interesting-files',
+        action='store_true',
+        help='Only show interesting files (backups, configs, source code leaks)'
+    )
     
     # Output options
     output_group = parser.add_argument_group('Output Options')
@@ -294,6 +322,11 @@ Examples:
         help='List all available categories and exit'
     )
     parser.add_argument(
+        '--list-tech',
+        action='store_true',
+        help='List all detectable technologies and exit'
+    )
+    parser.add_argument(
         '--version',
         action='version',
         version=f'%(prog)s {get_version()}'
@@ -307,6 +340,11 @@ Examples:
     # List categories and exit
     if args.list_categories:
         list_categories(pattern_manager)
+        return 0
+    
+    # List technologies and exit
+    if args.list_tech:
+        list_technologies(pattern_manager)
         return 0
     
     # Collect URLs
@@ -345,7 +383,11 @@ Examples:
     
     # Prepare categories filter
     categories = args.categories
-    if args.exclude and categories:
+    
+    # If --interesting-files is set, filter by that category only
+    if args.interesting_files:
+        categories = ['interesting_files']
+    elif args.exclude and categories:
         categories = [c for c in categories if c not in args.exclude]
     elif args.exclude:
         all_cats = pattern_manager.get_category_names()
@@ -372,6 +414,34 @@ Examples:
         smart_dedupe=not args.no_smart_dedupe,
         max_per_pattern=args.max_per_pattern,
     )
+    
+    # Post-filter by technology if specified
+    if args.tech:
+        tech_filter = [t.lower() for t in args.tech]
+        filtered_matches = []
+        for match in result.all_matches:
+            match_tech = [t.lower() for t in match.technologies]
+            if any(t in tech for tech in match_tech for t in tech_filter):
+                filtered_matches.append(match)
+        
+        # Rebuild result with filtered matches
+        result.all_matches = filtered_matches
+        result.matched_urls = len(filtered_matches)
+        
+        # Rebuild categorizations
+        from collections import defaultdict
+        result.categorized = defaultdict(list)
+        result.by_severity = defaultdict(list)
+        result.by_domain = defaultdict(list)
+        result.detected_technologies = defaultdict(int)
+        
+        for match in filtered_matches:
+            for cat in match.categories:
+                result.categorized[cat].append(match)
+            result.by_severity[match.highest_severity].append(match)
+            result.by_domain[match.domain].append(match)
+            for tech in match.technologies:
+                result.detected_technologies[tech] += 1
     
     # Configure output
     output_format = OutputFormat(args.format) if not args.quiet else OutputFormat.URLS_ONLY

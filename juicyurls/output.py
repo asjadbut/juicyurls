@@ -171,6 +171,13 @@ class OutputFormatter:
             if count > 0:
                 output.write(f"    {cat}: {count}\n")
         
+        # Show detected technologies
+        if 'technologies_detected' in stats and stats['technologies_detected']:
+            output.write(self._colorize("\n  🔧 Technologies Detected:\n", Colors.UNDERLINE))
+            sorted_tech = sorted(stats['technologies_detected'].items(), key=lambda x: x[1], reverse=True)
+            tech_display = ", ".join([f"{tech} ({count})" for tech, count in sorted_tech])
+            output.write(f"    {self._colorize(tech_display, Colors.BRIGHT_MAGENTA)}\n")
+        
         output.write("\n")
     
     def format_plain(self, result: AnalysisResult, output: TextIO):
@@ -253,6 +260,8 @@ class OutputFormatter:
             output.write(f"\n  {severity_str} {conf_indicator} (confidence: {match.confidence:.0%})\n")
             output.write(f"  URL: {self._colorize(match.url, Colors.BRIGHT_WHITE)}\n")
             output.write(f"  Categories: {', '.join(match.categories)}\n")
+            if match.technologies:
+                output.write(f"  Tech: {self._colorize(', '.join(match.technologies), Colors.BRIGHT_MAGENTA)}\n")
             if match.params:
                 output.write(f"  Parameters: {', '.join(match.params.keys())}\n")
             if match.confidence_reasons:
@@ -260,7 +269,11 @@ class OutputFormatter:
             output.write(f"  Matched: {match.matched_patterns}\n")
         else:
             categories = self._colorize(f"[{', '.join(match.categories)}]", Colors.CYAN)
-            output.write(f"  {conf_indicator} {match.url} {categories}\n")
+            # Show tech inline if detected
+            tech_str = ""
+            if match.technologies:
+                tech_str = self._colorize(f" 🔧{','.join(match.technologies)}", Colors.BRIGHT_MAGENTA)
+            output.write(f"  {conf_indicator} {match.url} {categories}{tech_str}\n")
     
     def format_json(self, result: AnalysisResult, output: TextIO):
         """Format output as JSON."""
@@ -282,7 +295,7 @@ class OutputFormatter:
     def format_csv(self, result: AnalysisResult, output: TextIO):
         """Format output as CSV."""
         writer = csv.writer(output)
-        writer.writerow(["URL", "Domain", "Path", "Severity", "Categories", "Parameters"])
+        writer.writerow(["URL", "Domain", "Path", "Severity", "Categories", "Parameters", "Confidence", "Technologies"])
         
         for match in result.all_matches:
             writer.writerow([
@@ -292,6 +305,8 @@ class OutputFormatter:
                 match.highest_severity.value,
                 "|".join(match.categories),
                 "|".join(match.params.keys()) if match.params else "",
+                match.confidence,
+                "|".join(match.technologies) if match.technologies else "",
             ])
     
     def format_urls_only(self, result: AnalysisResult, output: TextIO):

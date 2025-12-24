@@ -27,8 +27,12 @@ VALUE_PATTERNS = {
     # Command indicators
     "command_like": re.compile(r'^[\w\-]+\s|;|\||`|\$\(|&&', re.IGNORECASE),
     # Template/code injection indicators
-    "template_like": re.compile(r'\{\{|\$\{|\%\{|<%|<\?', re.IGNORECASE),
-}
+    "template_like": re.compile(r'\{\{|\$\{|\%\{|<%|<\?', re.IGNORECASE),    # API key patterns - looks like an API key/token
+    "api_key_value": re.compile(r'^[a-zA-Z0-9_\-]{20,}$|^sk_|^pk_|^api_|^key_|^token_', re.IGNORECASE),
+    # Suspicious keywords in values - debug/internal/test credentials
+    "suspicious_value": re.compile(r'internal|admin|test|debug|dev|staging|secret|private|root|super|master|default|sample|example|demo|temp|tmp|backup', re.IGNORECASE),
+    # Email in value (potential user enumeration)
+    "email_value": re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'),}
 
 # Low-value parameter values that should reduce confidence
 LOW_VALUE_PATTERNS = [
@@ -90,6 +94,7 @@ class MatchedURL:
     highest_severity: Severity = Severity.INFO
     confidence: float = 0.0  # 0.0 to 1.0 confidence score
     confidence_reasons: List[str] = field(default_factory=list)
+    technologies: List[str] = field(default_factory=list)  # Detected technologies
     
     def __post_init__(self):
         if self.severities:
@@ -111,6 +116,7 @@ class MatchedURL:
             "matched_patterns": self.matched_patterns,
             "confidence": self.confidence,
             "confidence_reasons": self.confidence_reasons,
+            "technologies": self.technologies,
         }
 
 
@@ -125,6 +131,7 @@ class AnalysisResult:
     by_severity: Dict[Severity, List[MatchedURL]] = field(default_factory=lambda: defaultdict(list))
     by_domain: Dict[str, List[MatchedURL]] = field(default_factory=lambda: defaultdict(list))
     all_matches: List[MatchedURL] = field(default_factory=list)
+    detected_technologies: Dict[str, int] = field(default_factory=lambda: defaultdict(int))  # Tech -> count
     
     def get_stats(self) -> Dict:
         """Get analysis statistics."""
@@ -142,6 +149,8 @@ class AnalysisResult:
         }
         if self.dedupe_removed > 0:
             stats["similar_urls_removed"] = self.dedupe_removed
+        if self.detected_technologies:
+            stats["technologies_detected"] = dict(self.detected_technologies)
         return stats
 
 
@@ -233,6 +242,16 @@ class URLAnalyzer:
                 if VALUE_PATTERNS['template_like'].search(value):
                     confidence += 0.5
                     reasons.append(f"template syntax in value: {param_name}")
+            
+            # Check for suspicious values in ANY category
+            if VALUE_PATTERNS['suspicious_value'].search(value):
+                confidence += 0.4
+                reasons.append(f"suspicious value '{value[:30]}' in {param_name}")
+            
+            # Check for API key-like values
+            if VALUE_PATTERNS['api_key_value'].match(value):
+                confidence += 0.3
+                reasons.append(f"API key-like value in {param_name}")
         
         return confidence, reasons
     
@@ -342,6 +361,9 @@ class URLAnalyzer:
             # Calculate overall confidence as weighted average
             overall_confidence = sum(category_confidence.values()) / len(category_confidence)
             
+            # Detect technologies
+            detected_tech = self.pattern_manager.detect_technologies(url)
+            
             return MatchedURL(
                 url=url,
                 domain=domain,
@@ -352,6 +374,7 @@ class URLAnalyzer:
                 matched_patterns=dict(matched_patterns_detail),
                 confidence=round(overall_confidence, 2),
                 confidence_reasons=list(set(all_confidence_reasons)),  # Dedupe reasons
+                technologies=detected_tech,
             )
         
         return None
@@ -429,6 +452,10 @@ class URLAnalyzer:
                 
                 result.matched_urls += 1
                 result.all_matches.append(match)
+                
+                # Track detected technologies
+                for tech in match.technologies:
+                    result.detected_technologies[tech] += 1
                 
                 # Categorize by vulnerability type
                 for cat in match.categories:
