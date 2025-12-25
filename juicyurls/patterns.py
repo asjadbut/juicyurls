@@ -275,6 +275,8 @@ class PatternManager:
             ],
             exclude_patterns=[
                 r"\.(js|css|jpg|jpeg|png|gif|svg|ico|woff|woff2)(\?|$)",
+                # Exclude affiliate/tracking IDs - not vulnerable to IDOR
+                r"[?&](irclickid|irgwc|Ecid|gclid|fbclid|msclkid|dclid|twclid|ttclid|li_fat_id|mc_eid|_ga|utm_id|clickid|click_id|affiliate_id|affid|aff_id|partner_id|ref_id|refid|campaign_id|ad_id|adid)=",
             ],
         )
         
