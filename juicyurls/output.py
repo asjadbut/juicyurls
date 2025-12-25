@@ -58,6 +58,7 @@ class OutputConfig:
     show_stats: bool = True
     verbose: bool = False
     output_file: Optional[str] = None
+    show_intel: bool = False  # Show URL intelligence info
 
 
 class OutputFormatter:
@@ -73,6 +74,21 @@ class OutputFormatter:
         Severity.HIGH: "🔴",
         Severity.MEDIUM: "🟡",
         Severity.LOW: "🔵",
+    }
+    
+    # Classification icons and colors
+    CLASSIFICATION_ICONS = {
+        "juicy": "🧃",
+        "interesting": "✨",
+        "neutral": "➖",
+        "boring": "💤",
+    }
+    
+    CLASSIFICATION_COLORS = {
+        "juicy": Colors.BRIGHT_GREEN + Colors.BOLD,
+        "interesting": Colors.GREEN,
+        "neutral": Colors.WHITE,
+        "boring": Colors.DIM,
     }
     
     def __init__(self, config: Optional[OutputConfig] = None):
@@ -145,6 +161,10 @@ class OutputFormatter:
         output.write(f"  Matched URLs: {self._colorize(str(stats['matched_urls']), Colors.BRIGHT_GREEN)}\n")
         if 'similar_urls_removed' in stats:
             output.write(f"  Similar URLs grouped: {self._colorize(str(stats['similar_urls_removed']), Colors.DIM)} (kept max per pattern)\n")
+        if 'boring_urls_filtered' in stats:
+            output.write(f"  Boring URLs filtered: {self._colorize(str(stats['boring_urls_filtered']), Colors.DIM)} (static/tracking/CDN)\n")
+        if 'potential_secrets_found' in stats and stats['potential_secrets_found'] > 0:
+            output.write(f"  🔑 SECRETS FOUND: {self._colorize(str(stats['potential_secrets_found']), Colors.BRIGHT_RED + Colors.BOLD)} (check immediately!)\n")
         output.write(f"  Domains found: {self._colorize(str(stats['domains_found']), Colors.BRIGHT_CYAN)}\n")
         
         output.write(self._colorize("\n  By Severity:\n", Colors.UNDERLINE))
@@ -153,6 +173,16 @@ class OutputFormatter:
                 sev = Severity(sev_name)
                 color = self._severity_color(sev)
                 output.write(f"    {self._colorize(sev_name.upper(), color)}: {count}\n")
+        
+        # Show classification stats if available
+        if 'by_classification' in stats and stats['by_classification']:
+            output.write(self._colorize("\n  By Intelligence:\n", Colors.UNDERLINE))
+            class_order = ['juicy', 'interesting', 'neutral', 'boring']
+            for cls in class_order:
+                count = stats['by_classification'].get(cls, 0)
+                if count > 0:
+                    icon = self.CLASSIFICATION_ICONS.get(cls, "")
+                    output.write(f"    {icon} {cls}: {count}\n")
         
         output.write(self._colorize("\n  By Category:\n", Colors.UNDERLINE))
         # Sort by count descending
@@ -233,17 +263,46 @@ class OutputFormatter:
         else:
             conf_indicator = self._colorize("☆☆☆", Colors.DIM)
         
+        # Format classification indicator
+        class_icon = self.CLASSIFICATION_ICONS.get(match.classification, "")
+        class_color = self.CLASSIFICATION_COLORS.get(match.classification, "")
+        
+        # Check if URL has secrets
+        has_secrets = getattr(match, 'has_secrets', False)
+        detected_secrets = getattr(match, 'detected_secrets', [])
+        secret_indicator = ""
+        if has_secrets:
+            secret_indicator = self._colorize(" 🔑 SECRET", Colors.BRIGHT_RED + Colors.BOLD)
+        
         if self.config.verbose:
-            output.write(f"\n  {severity_str} {conf_indicator} (confidence: {match.confidence:.0%})\n")
+            output.write(f"\n  {severity_str} {conf_indicator} (confidence: {match.confidence:.0%}){secret_indicator}\n")
             output.write(f"  URL: {self._colorize(match.url, Colors.BRIGHT_WHITE)}\n")
             output.write(f"  Categories: {', '.join(match.categories)}\n")
             if match.params:
                 output.write(f"  Parameters: {', '.join(match.params.keys())}\n")
             if match.confidence_reasons:
                 output.write(f"  Why: {'; '.join(match.confidence_reasons[:3])}\n")
+            # Show detected secrets
+            if detected_secrets:
+                output.write(self._colorize("  🔑 DETECTED SECRETS:\n", Colors.BRIGHT_RED + Colors.BOLD))
+                for secret in detected_secrets:
+                    secret_type = secret.get('secret_type', 'unknown') if isinstance(secret, dict) else getattr(secret, 'secret_type', 'unknown')
+                    masked = secret.get('masked_value', '***') if isinstance(secret, dict) else getattr(secret, 'masked_value', '***')
+                    location = secret.get('location', '') if isinstance(secret, dict) else getattr(secret, 'location', '')
+                    output.write(f"    ⚠️  {self._colorize(secret_type, Colors.YELLOW)}: {masked} (in {location})\n")
+            # Show intelligence info if enabled or in verbose mode
+            if self.config.show_intel or self.config.verbose:
+                output.write(f"  Intelligence: {class_icon} {self._colorize(match.classification, class_color)} (score: {match.intelligence_score:+.2f})\n")
+                if match.intelligence_reasons:
+                    output.write(f"  Intel reasons: {'; '.join(match.intelligence_reasons[:4])}\n")
         else:
             categories = self._colorize(f"[{', '.join(match.categories)}]", Colors.CYAN)
-            output.write(f"  {conf_indicator} {match.url} {categories}\n")
+            if has_secrets:
+                output.write(f"  🔑 {conf_indicator} {match.url} {categories}\n")
+            elif self.config.show_intel:
+                output.write(f"  {conf_indicator} {class_icon} {match.url} {categories}\n")
+            else:
+                output.write(f"  {conf_indicator} {match.url} {categories}\n")
     
     def format_urls_only(self, result: AnalysisResult, output: TextIO):
         """Output only the URLs, one per line."""

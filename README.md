@@ -32,6 +32,8 @@ JuicyURLs automatically categorizes URLs by potential vulnerability type:
 - 🎯 **Smart Categorization** - Automatically identifies 25+ vulnerability categories
 - 🔍 **Real CVE Patterns** - Patterns based on actual CVEs (Log4j, Drupalgeddon, ProxyLogon, etc.)
 - 🧠 **Confidence Scoring** - Analyzes parameter VALUES, not just names, to reduce false positives
+- 🧃 **URL Intelligence** - Automatically classifies URLs as juicy/interesting/neutral/boring based on context
+- 🔑 **Secret Detection** - Detects 30+ types of leaked API keys, tokens, and credentials in URLs
 - 📁 **Interesting Files** - Finds backups, configs, source code leaks, .git exposure
 - 🎯 **Smart Deduplication** - Groups similar URLs (e.g., `?id=1` and `?id=2`) keeping only unique patterns
 - 📊 **Statistics** - Shows analysis summary and confidence levels
@@ -156,6 +158,60 @@ juicyurls -f urls.txt -c wp_vulns
 juicyurls -f urls.txt -c java_vulns
 ```
 
+### URL Intelligence (Smart Filtering)
+
+JuicyURLs analyzes the **entire URL context** to classify URLs automatically:
+
+```bash
+# Show intelligence classification in output
+juicyurls -f urls.txt --show-intel
+
+# Only show juicy/interesting URLs (filter out boring stuff)
+juicyurls -f urls.txt --only-juicy
+
+# Include boring URLs that are normally filtered
+juicyurls -f urls.txt --show-boring
+
+# Disable smart filtering entirely
+juicyurls -f urls.txt --no-smart
+```
+
+**Classifications:**
+- 🧃 **Juicy** - High-value targets (admin panels, API endpoints, auth flows, debug endpoints)
+- ✨ **Interesting** - Worth investigating (upload forms, search endpoints, user data)
+- ➖ **Neutral** - Standard endpoints, analyze normally
+- 💤 **Boring** - Static assets, CDN, tracking pixels (filtered by default)
+
+### Secret Detection
+
+JuicyURLs automatically detects **leaked secrets** in URLs:
+
+```bash
+# Secret detection is enabled by default
+juicyurls -f urls.txt
+
+# Disable secret detection (faster processing)
+juicyurls -f urls.txt --no-secrets
+
+# Verbose mode shows detailed secret info
+juicyurls -f urls.txt -v
+```
+
+**Detected Secret Types (30+):**
+- 🔑 **API Keys**: AWS, Google, Stripe, Twilio, SendGrid, Mailgun
+- 🎫 **Tokens**: JWT, GitHub, GitLab, Slack, Discord, NPM
+- 🔐 **Credentials**: Private keys, passwords in URLs, Bearer tokens
+- ☁️ **Cloud**: Azure, Firebase, Heroku, DigitalOcean
+- 💳 **Payment**: Stripe, PayPal, Square API keys
+
+**Example output with secrets:**
+```
+🔴 HIGH ★★★ (confidence: 100%) 🔑 SECRET
+  URL: https://api.example.com/webhook?token=sk_live_EXAMPLE_KEY_HERE
+  🔑 DETECTED SECRETS:
+    ⚠️  stripe_secret: sk_live_EXAM****HERE (in param: token)
+```
+
 ## 🎯 Vulnerability Categories
 
 ### Core Vulnerability Patterns
@@ -178,6 +234,7 @@ juicyurls -f urls.txt -c java_vulns
 | `backup` | 🟡 Medium | Backup files |
 | `cloud` | 🟡 Medium | Cloud storage endpoints |
 | `graphql` | 🟡 Medium | GraphQL endpoints |
+| `leaked_secrets` | 🔴 High | API keys, tokens, credentials in URLs |
 | `api` | 🔵 Low | API endpoints |
 | `websocket` | 🔵 Low | WebSocket endpoints |
 | `info_disclosure` | 🔵 Low | Information disclosure |
@@ -270,6 +327,7 @@ cat output/* | juicyurls
   Total URLs processed: 1337
   Unique URLs: 892
   Matched URLs: 156
+  🔑 SECRETS FOUND: 3 (check immediately!)
   Domains found: 5
 
   By Severity:
@@ -277,8 +335,15 @@ cat output/* | juicyurls
     MEDIUM: 67
     LOW: 66
 
+  By Intelligence:
+    🧃 juicy: 45
+    ✨ interesting: 78
+    ➖ neutral: 33
+
 🔴 HIGH (23 URLs)
 ------------------------------------------------------------
+  🔑 ★★★ https://api.example.com/webhook?token=sk_live_xxx [leaked_secrets, auth]
+       🔑 DETECTED: stripe_secret
   ★★★ https://api.example.com/v1/users?id=12345 [idor, api]
        Why: Numeric ID value; API endpoint path
   ★★☆ https://example.com/download?file=report.pdf [lfi_rfi]
@@ -307,6 +372,14 @@ Filter Options:
   --no-smart-dedupe        Keep similar URLs
   --max-per-pattern N      Max URLs per pattern (default: 1)
   --interesting-files      Only interesting files
+
+Smart Filtering (URL Intelligence):
+  --no-smart               Disable URL intelligence
+  --show-boring            Include boring URLs (static/CDN/tracking)
+  --only-juicy             Only show juicy/interesting URLs
+  --show-intel             Show intelligence classification in output
+  --detect-secrets         Detect leaked secrets (default: enabled)
+  --no-secrets             Disable secret detection
 
 Output Options:
   -o, --output FILE        Output file

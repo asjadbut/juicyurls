@@ -250,6 +250,40 @@ Examples:
         help='Only show interesting files (backups, configs, source code leaks)'
     )
     
+    # Intelligence/Smart filtering options
+    smart_group = parser.add_argument_group('Smart Filtering (URL Intelligence)')
+    smart_group.add_argument(
+        '--no-smart',
+        action='store_true',
+        help='Disable URL intelligence (analyze all URLs equally without context)'
+    )
+    smart_group.add_argument(
+        '--show-boring',
+        action='store_true',
+        help='Include boring URLs (static assets, tracking, CDN) that are normally filtered'
+    )
+    smart_group.add_argument(
+        '--only-juicy',
+        action='store_true',
+        help='Only show URLs classified as "juicy" or "interesting" by intelligence'
+    )
+    smart_group.add_argument(
+        '--show-intel',
+        action='store_true',
+        help='Show URL intelligence classification and reasons in output'
+    )
+    smart_group.add_argument(
+        '--detect-secrets',
+        action='store_true',
+        default=True,
+        help='Detect leaked secrets (API keys, tokens, JWTs) in URLs (default: enabled)'
+    )
+    smart_group.add_argument(
+        '--no-secrets',
+        action='store_true',
+        help='Disable secret detection (faster processing)'
+    )
+    
     # Output options
     output_group = parser.add_argument_group('Output Options')
     output_group.add_argument(
@@ -360,6 +394,11 @@ Examples:
     if args.high_confidence:
         min_confidence = 0.5
     
+    # Smart filtering settings
+    use_smart = not args.no_smart
+    hide_boring = not args.show_boring
+    detect_secrets = not args.no_secrets  # Default: enabled
+    
     # Initialize analyzer
     analyzer = URLAnalyzer(pattern_manager)
     
@@ -372,7 +411,16 @@ Examples:
         min_confidence=min_confidence,
         smart_dedupe=not args.no_smart_dedupe,
         max_per_pattern=args.max_per_pattern,
+        smart_filter=use_smart,
+        hide_boring=hide_boring,
+        detect_secrets=detect_secrets,
     )
+    
+    # Filter to only juicy/interesting if requested
+    if args.only_juicy:
+        result.all_matches = [m for m in result.all_matches if m.classification in ('juicy', 'interesting')]
+        # Update matched count
+        result.matched_urls = len(result.all_matches)
     
     # Configure output
     output_format = OutputFormat(args.format) if not args.quiet else OutputFormat.URLS_ONLY
@@ -383,6 +431,7 @@ Examples:
         show_stats=not args.no_stats and not args.quiet,
         verbose=args.verbose,
         output_file=args.output,
+        show_intel=args.show_intel,
     )
     
     # Output results

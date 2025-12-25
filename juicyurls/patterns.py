@@ -643,6 +643,47 @@ class PatternManager:
             ],
         )
         
+        # Leaked Secrets - API keys, tokens, credentials in URLs
+        # NOTE: Actual secret detection is done by SecretDetector class in analyzer.py
+        # This pattern catches URLs with secret-like parameter names
+        self.patterns["leaked_secrets"] = VulnPattern(
+            name="Potential Leaked Secrets",
+            severity=Severity.HIGH,
+            description="URLs containing potential API keys, tokens, or credentials",
+            path_patterns=[
+                # Webhook URLs often contain tokens
+                r"/webhook[s]?/[A-Za-z0-9_-]{20,}",
+                r"/hook[s]?/[A-Za-z0-9_-]{20,}",
+                r"/callback/[A-Za-z0-9_-]{20,}",
+                # Slack webhooks
+                r"/services/T[A-Z0-9]+/B[A-Z0-9]+/",
+                # Discord webhooks
+                r"/webhooks/\d+/[A-Za-z0-9_-]+",
+                # API paths with embedded tokens
+                r"/api/[A-Za-z0-9_-]{32,}/",
+                r"/v\d+/[A-Za-z0-9_-]{32,}/",
+            ],
+            param_patterns=[
+                # Token/key parameters
+                r"^token$", r"^api[-_]?key$", r"^apikey$", r"^apiKey$",
+                r"^secret$", r"^api[-_]?secret$", r"^client[-_]?secret$",
+                r"^access[-_]?token$", r"^accessToken$",
+                r"^refresh[-_]?token$", r"^refreshToken$",
+                r"^auth[-_]?token$", r"^authToken$",
+                r"^bearer$", r"^jwt$", r"^session[-_]?token$",
+                r"^private[-_]?key$", r"^privateKey$",
+                r"^app[-_]?key$", r"^appKey$",
+                r"^webhook[-_]?secret$",
+                # Credentials
+                r"^password$", r"^passwd$", r"^pwd$", r"^pass$",
+                r"^credential[s]?$", r"^auth$",
+                # Connection strings
+                r"^connection[-_]?string$", r"^connstr$",
+                r"^database[-_]?url$", r"^db[-_]?url$",
+            ],
+            require_params=True,
+        )
+        
         # ==================== KNOWN CVE / VULNERABILITY PATTERNS ====================
         
         self._load_cve_patterns()
