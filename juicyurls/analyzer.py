@@ -333,27 +333,67 @@ class SecretDetector:
         
         return entropy
     
+    # CMS aggregated asset param names that look like secrets but aren't
+    CMS_ASSET_PARAMS = {
+        'include', 'delta', 'language', 'theme', 'scope',  # Drupal CSS/JS aggregation
+        'ver', 'v', 'version',  # Version params
+    }
+    
+    # Patterns for CMS aggregated asset values (base64-like but NOT secrets)
+    CMS_ASSET_VALUE_PATTERN = re.compile(
+        r'^eJ[A-Za-z0-9_-]{20,}$|'  # Drupal compressed/base64 include param
+        r'^[a-z]{2}_[A-Za-z]{2,}$',  # Language codes like en_US, ia_uswds_subtheme
+        re.IGNORECASE
+    )
+    
     @classmethod
-    def detect_secrets(cls, params: Dict[str, List[str]], url: str = "") -> List[SecretMatch]:
+    def is_cms_asset_value(cls, param_name: str, value: str) -> bool:
+        """Check if a param/value looks like a CMS aggregated asset, not a real secret."""
+        # Check param name
+        if param_name.lower() in cls.CMS_ASSET_PARAMS:
+            return True
+        # Check value pattern (Drupal compressed includes start with eJ)
+        if cls.CMS_ASSET_VALUE_PATTERN.match(value):
+            return True
+        return False
+    
+    @classmethod
+    def detect_secrets(cls, params: Dict[str, List[str]], url: str = "", skip_cms_assets: bool = True) -> List[SecretMatch]:
         """
         Detect potential secrets in URL parameters.
         
         Args:
             params: Dictionary of parameter names to values
             url: Full URL (for checking patterns in the URL itself)
+            skip_cms_assets: Skip CMS aggregated asset params (default: True)
         
         Returns:
             List of SecretMatch objects for detected secrets
         """
         secrets = []
         
+        # Quick check: if URL looks like CMS aggregated asset, skip entirely
+        if skip_cms_assets and url:
+            if re.search(r'/sites/default/files/(css|js)/', url, re.I):
+                return []
+            if re.search(r'/files/(css|js)/css_|/files/(css|js)/js_', url, re.I):
+                return []
+        
         # Check each parameter
         for param_name, values in params.items():
+            # Skip known CMS asset params
+            if skip_cms_assets and param_name.lower() in cls.CMS_ASSET_PARAMS:
+                continue
+            
             param_is_secret_like = param_name.lower() in cls.SECRET_PARAM_NAMES or \
                                    any(s in param_name.lower() for s in ['key', 'token', 'secret', 'pass', 'auth'])
             
             for value in values:
                 if not value or len(value) < 8:
+                    continue
+                
+                # Skip CMS asset values (Drupal base64-like includes)
+                if skip_cms_assets and cls.is_cms_asset_value(param_name, value):
                     continue
                 
                 # Check against known patterns
@@ -475,15 +515,23 @@ class URLIntelligence:
         r'wp-includes/(css|js|images?))/', re.IGNORECASE
     )
     
-    # Static file extensions - not interesting
+    # Static file extensions - not interesting (but exclude backups!)
     STATIC_EXTENSIONS = re.compile(
         r'\.(css|js|jsx|ts|tsx|less|scss|sass|'
         r'jpg|jpeg|png|gif|svg|ico|webp|avif|bmp|tiff?|'
         r'woff2?|ttf|eot|otf|'
         r'mp3|mp4|webm|ogg|wav|avi|mov|mkv|flv|'
-        r'pdf|doc|docx|xls|xlsx|ppt|pptx|'
-        r'zip|rar|7z|tar|gz|bz2|'
+        r'doc|docx|xls|xlsx|ppt|pptx|'  # Removed pdf - can be sensitive
         r'map|min\.js|bundle\.js|chunk\.js)(\?|$)', re.IGNORECASE
+    )
+    
+    # Backup/sensitive paths that should NOT be filtered even if in static locations
+    BACKUP_OVERRIDE_PATHS = re.compile(
+        r'/dup/|/backup|/bak/|/old/|/copy/|/archive/|'
+        r'/tmp/|/temp/|/test/|/debug/|'
+        r'\.sql$|\.bak$|\.backup$|\.old$|'
+        r'\.zip$|\.tar$|\.gz$|\.rar$|\.7z$',  # Archives can be backups
+        re.IGNORECASE
     )
     
     # CDN and third-party domains - not in scope usually
@@ -531,6 +579,31 @@ class URLIntelligence:
         r'/author/|/archive/|/archives/|'
         r'/(terms|privacy|about|contact|faq|help|support|legal|tos|policy)/?$|'
         r'/blog/?$|/news/?$|/press/?$|/careers/?$', re.IGNORECASE
+    )
+    
+    # CMS aggregated asset paths (Drupal, WordPress, etc.) - NOT secrets!
+    CMS_AGGREGATED_ASSETS = re.compile(
+        r'/sites/default/files/(css|js)/|'  # Drupal aggregated CSS/JS
+        r'/sites/[^/]+/files/(css|js)/|'  # Drupal multisite
+        r'/files/css/|/files/js/|'  # Generic CMS assets
+        r'/wp-content/cache/|'  # WordPress cached assets
+        r'/wp-content/uploads/.*\.(css|js)$|'
+        r'\?.*include=eJ[A-Za-z0-9_-]',  # Drupal aggregated include param (base64)
+        re.IGNORECASE
+    )
+    
+    # Fuzzed/garbage URLs - repetitive patterns from fuzzing tools
+    FUZZED_URL_PATTERN = re.compile(
+        r'(.{3,})\1{2,}|'  # Same 3+ char string repeated 3+ times
+        r'/API/.*API/.*API/|'  # Specific fuzzing pattern seen in wayback
+        r'/noticeError.*noticeError.*noticeError|'  # Another common fuzz pattern
+        r'/(\w+)/\1/\1',  # Immediate repetition like /foo/foo/foo
+        re.IGNORECASE
+    )
+    
+    # ALL CAPS pattern needs separate compile without IGNORECASE
+    FUZZED_CAPS_PATTERN = re.compile(
+        r'/[A-Z]{2,}/[A-Z]{2,}/[A-Z]{2,}/[A-Z]{2,}/[A-Z]{2,}'  # ALL CAPS path segments only
     )
     
     # Widget/embed URLs
@@ -662,6 +735,45 @@ class URLIntelligence:
     }
     
     @classmethod
+    def is_fuzzed_url(cls, url: str, path: str) -> Tuple[bool, str]:
+        """
+        Detect if a URL looks like it was generated by a fuzzing tool.
+        
+        Returns:
+            Tuple of (is_fuzzed, reason)
+        """
+        # Check for repetitive path patterns (case-insensitive patterns)
+        if cls.FUZZED_URL_PATTERN.search(path):
+            return True, "repetitive fuzzing pattern detected"
+        
+        # Check for ALL CAPS patterns (case-sensitive)
+        if cls.FUZZED_CAPS_PATTERN.search(path):
+            return True, "all-caps fuzzing pattern detected"
+        
+        # Check for excessive path depth with repetition
+        path_segments = [s for s in path.split('/') if s]
+        if len(path_segments) > 6:  # Increased threshold
+            # Count how many times each segment appears
+            from collections import Counter
+            segment_counts = Counter(path_segments)
+            most_common = segment_counts.most_common(1)
+            if most_common and most_common[0][1] >= 3:
+                return True, f"path segment '{most_common[0][0]}' repeated {most_common[0][1]} times"
+        
+        # Check for very long paths with similar segments
+        if len(path) > 200 and len(set(path_segments)) < len(path_segments) / 2:
+            return True, "very long path with many repeated segments"
+        
+        return False, ""
+    
+    @classmethod
+    def is_cms_aggregated_asset(cls, url: str, path: str) -> bool:
+        """
+        Check if URL is a CMS aggregated asset (CSS/JS) that should NOT be flagged as secrets.
+        """
+        return bool(cls.CMS_AGGREGATED_ASSETS.search(url) or cls.CMS_AGGREGATED_ASSETS.search(path))
+    
+    @classmethod
     def analyze(cls, url: str, domain: str, path: str, params: Dict[str, List[str]]) -> Tuple[float, List[str], str]:
         """
         Analyze a URL and return an intelligence score.
@@ -675,6 +787,19 @@ class URLIntelligence:
         score = 0.0
         reasons = []
         
+        # ========== FUZZ DETECTION ==========
+        is_fuzzed, fuzz_reason = cls.is_fuzzed_url(url, path)
+        if is_fuzzed:
+            score -= 1.0
+            reasons.append(f"⚠️ FUZZED: {fuzz_reason}")
+            return score, reasons, "boring"
+        
+        # ========== CMS AGGREGATED ASSETS ==========
+        if cls.is_cms_aggregated_asset(url, path):
+            score -= 0.9
+            reasons.append("CMS aggregated asset (not a real secret)")
+            return score, reasons, "boring"
+        
         # ========== NEGATIVE SIGNALS ==========
         
         # Check for CDN/third-party domains
@@ -682,15 +807,23 @@ class URLIntelligence:
             score -= 0.8
             reasons.append("third-party/CDN domain")
         
-        # Check for static paths
-        if cls.STATIC_PATHS.search(path):
+        # Check if path contains backup/sensitive indicators (override static filtering)
+        has_backup_override = cls.BACKUP_OVERRIDE_PATHS.search(path) or cls.BACKUP_OVERRIDE_PATHS.search(url)
+        
+        # Check for static paths (but not if backup override)
+        if cls.STATIC_PATHS.search(path) and not has_backup_override:
             score -= 0.6
             reasons.append("static asset path")
         
-        # Check for static file extensions
-        if cls.STATIC_EXTENSIONS.search(path):
+        # Check for static file extensions (but not if backup override)
+        if cls.STATIC_EXTENSIONS.search(path) and not has_backup_override:
             score -= 0.7
             reasons.append("static file extension")
+        
+        # If backup override matched, give it a boost
+        if has_backup_override:
+            score += 0.4
+            reasons.append("📁 potential backup/sensitive path")
         
         # Check for boring paths
         if cls.BORING_PATHS.search(path):
@@ -987,9 +1120,10 @@ class AnalysisResult:
 class URLAnalyzer:
     """Analyzes URLs and categorizes them by potential vulnerability type."""
     
-    def __init__(self, pattern_manager: Optional[PatternManager] = None):
+    def __init__(self, pattern_manager: Optional[PatternManager] = None, learner=None):
         self.pattern_manager = pattern_manager or PatternManager()
         self.seen_urls: Set[str] = set()
+        self.learner = learner  # FeedbackLearner instance for applying learned adjustments
         
     def normalize_url(self, url: str) -> str:
         """Normalize URL for deduplication."""
@@ -1213,6 +1347,16 @@ class URLAnalyzer:
                 # Boring URLs (-1) reduce confidence, juicy URLs (+1) increase it
                 intel_adjustment = intel_score * 0.3  # Max ±0.3 adjustment
                 overall_confidence = max(0.0, min(1.0, overall_confidence + intel_adjustment))
+            
+            # Apply learned adjustments from user feedback
+            learning_reasons = []
+            if self.learner:
+                learning_adjustment, learning_reasons = self.learner.get_confidence_adjustment(
+                    url, matched_categories
+                )
+                if learning_adjustment != 0:
+                    overall_confidence = max(0.0, min(1.0, overall_confidence + learning_adjustment))
+                    all_confidence_reasons.extend(learning_reasons)
             
             # Boost confidence significantly if secrets detected
             if detected_secrets:

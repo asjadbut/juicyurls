@@ -16,6 +16,7 @@ from typing import List, Optional
 from .analyzer import URLAnalyzer
 from .patterns import PatternManager, Severity
 from .output import OutputFormatter, OutputConfig, OutputFormat
+from .learning import FeedbackLearner
 
 
 def get_version() -> str:
@@ -74,7 +75,7 @@ def find_tool(tool: str) -> Optional[str]:
     return None
 
 
-def run_external_tool(tool: str, domain: str, extra_args: List[str] = None) -> List[str]:
+def run_external_tool(tool: str, domain: str, extra_args: List[str] = None, timeout: int = 600) -> List[str]:
     """
     Run an external URL gathering tool.
     
@@ -82,6 +83,7 @@ def run_external_tool(tool: str, domain: str, extra_args: List[str] = None) -> L
         tool: Tool name (waybackurls, gau, etc.)
         domain: Target domain
         extra_args: Additional arguments for the tool
+        timeout: Timeout in seconds (default: 600 = 10 minutes)
     
     Returns:
         List of URLs gathered
@@ -99,17 +101,20 @@ def run_external_tool(tool: str, domain: str, extra_args: List[str] = None) -> L
         cmd.extend(extra_args)
     cmd.append(domain)
     
+    print(f"⏳ Running {tool} on {domain} (timeout: {timeout}s)...", file=sys.stderr)
+    
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=300  # 5 minute timeout
+            timeout=timeout
         )
         urls = [line.strip() for line in result.stdout.split('\n') if line.strip()]
         return urls
     except subprocess.TimeoutExpired:
-        print(f"Error: {tool} timed out", file=sys.stderr)
+        print(f"⚠️  Warning: {tool} timed out after {timeout}s. Try increasing with --timeout flag.", file=sys.stderr)
+        print(f"   Tip: Large domains may need --timeout 1800 (30 min) or more.", file=sys.stderr)
         return []
     except Exception as e:
         print(f"Error running {tool}: {e}", file=sys.stderr)
@@ -194,6 +199,13 @@ Examples:
         choices=['waybackurls', 'gau', 'both'],
         default='gau',
         help='External tool to use for URL gathering (default: gau)'
+    )
+    input_group.add_argument(
+        '--timeout',
+        type=int,
+        default=600,
+        metavar='SECONDS',
+        help='Timeout for external tools in seconds (default: 600 = 10 min). Use 0 for no timeout.'
     )
     
     # Filter options
@@ -318,6 +330,30 @@ Examples:
         help='Quiet mode - output URLs only'
     )
     
+    # Learning/Feedback options
+    learning_group = parser.add_argument_group('Learning Options')
+    learning_group.add_argument(
+        '--feedback',
+        nargs=2,
+        metavar=('TYPE', 'URL'),
+        help="Provide feedback: --feedback tp|fp 'URL'. tp=true positive (found bug), fp=false positive (not useful)"
+    )
+    learning_group.add_argument(
+        '--show-learning',
+        action='store_true',
+        help='Show learned patterns and statistics'
+    )
+    learning_group.add_argument(
+        '--reset-learning',
+        action='store_true',
+        help='Reset all learned patterns (delete feedback data)'
+    )
+    learning_group.add_argument(
+        '--no-learning',
+        action='store_true',
+        help='Disable applying learned adjustments during analysis'
+    )
+    
     # Other options
     parser.add_argument(
         '--list-categories',
@@ -332,8 +368,52 @@ Examples:
     
     args = parser.parse_args()
     
-    # Initialize pattern manager
+    # Initialize pattern manager and learner
     pattern_manager = PatternManager()
+    learner = FeedbackLearner()
+    
+    # Handle learning commands (these exit early)
+    if args.show_learning:
+        print(learner.show_learning_summary())
+        return 0
+    
+    if args.reset_learning:
+        learner.reset()
+        print("✅ Learning data has been reset.")
+        return 0
+    
+    if args.feedback:
+        feedback_type, url = args.feedback
+        feedback_type = feedback_type.lower()
+        
+        if feedback_type not in ('tp', 'fp'):
+            print(f"Error: Feedback type must be 'tp' (true positive) or 'fp' (false positive)")
+            print(f"  Example: juicyurls --feedback fp 'https://example.com/boring/url'")
+            return 1
+        
+        # Quick analysis to get categories
+        analyzer = URLAnalyzer(pattern_manager)
+        result = analyzer.analyze_urls([url], deduplicate=False)
+        
+        categories = []
+        if result.all_matches:
+            categories = list(result.all_matches[0].categories)
+        
+        if learner.add_feedback(url, feedback_type, categories):
+            type_str = "true positive (found bug)" if feedback_type == 'tp' else "false positive (not useful)"
+            print(f"✅ Recorded feedback: {url}")
+            print(f"   Type: {type_str}")
+            if categories:
+                print(f"   Categories: {', '.join(categories)}")
+            
+            stats = learner.get_stats()
+            print(f"\n📊 Total feedback: {stats['total_feedback']} ({stats['true_positives']} TP, {stats['false_positives']} FP)")
+            print(f"   Learned patterns: {stats['learned_patterns']}")
+        else:
+            print("❌ Failed to record feedback")
+            return 1
+        
+        return 0
     
     # List categories and exit
     if args.list_categories:
@@ -356,11 +436,14 @@ Examples:
     if args.domain:
         print(f"🔍 Gathering URLs for {args.domain}...", file=sys.stderr)
         
+        # Handle timeout (0 means no timeout)
+        timeout = args.timeout if args.timeout > 0 else None
+        
         if args.tool == 'both':
-            urls.extend(run_external_tool('waybackurls', args.domain))
-            urls.extend(run_external_tool('gau', args.domain))
+            urls.extend(run_external_tool('waybackurls', args.domain, timeout=timeout))
+            urls.extend(run_external_tool('gau', args.domain, timeout=timeout))
         else:
-            urls.extend(run_external_tool(args.tool, args.domain))
+            urls.extend(run_external_tool(args.tool, args.domain, timeout=timeout))
         
         print(f"📥 Gathered {len(urls)} URLs", file=sys.stderr)
     
@@ -398,9 +481,10 @@ Examples:
     use_smart = not args.no_smart
     hide_boring = not args.show_boring
     detect_secrets = not args.no_secrets  # Default: enabled
+    use_learning = not args.no_learning
     
-    # Initialize analyzer
-    analyzer = URLAnalyzer(pattern_manager)
+    # Initialize analyzer with learner
+    analyzer = URLAnalyzer(pattern_manager, learner=learner if use_learning else None)
     
     # Analyze URLs
     result = analyzer.analyze_urls(

@@ -336,6 +336,11 @@ class PatternManager:
                 r"\.bak$", r"\.backup$", r"\.old$",
                 r"\.sql\.gz$", r"\.sql\.zip$",
                 r"/\w+\.tar\.gz$", r"/\w+\.zip$",
+                # Backup directories (like /as-ia/nia_backup)
+                r"[-_]backup/?$", r"/backup[-_]?", r"/backups?/",
+                r"/bkp/", r"/bak/", r"/old/", r"/archive/",
+                # Duplicate/copy directories
+                r"/dup/", r"/copy/", r"/duplicate/", r"/tmp/", r"/temp/",
             ],
             exclude_patterns=[
                 r"/download/", r"/release/", r"/dist/",  # Legitimate downloads
@@ -432,6 +437,13 @@ class PatternManager:
                 r"/verify[-_]?email", r"/confirm[-_]?email",
                 r"/activate", r"/2fa", r"/mfa", r"/otp",
                 r"/token$", r"/jwt$", r"/refresh[-_]?token",
+                # Combined login patterns (like /userlogin)
+                r"/user[-_]?login", r"/user[-_]?logout", r"/user[-_]?register",
+                r"/account[-_]?login", r"/account[-_]?logout",
+                r"/user/login", r"/user/logout", r"/user/register",
+                r"/users/sign_in", r"/users/sign_out",
+                # Session endpoints
+                r"/session/new", r"/session/create", r"/session/destroy",
             ],
             param_patterns=[
                 r"^token$", r"^auth_token$", r"^access_token$",
@@ -485,6 +497,11 @@ class PatternManager:
                 r"/server-status$", r"/server-info$",
                 r"/__debug__/", r"/profiler/",
                 r"/elmah\.axd", r"/trace\.axd",
+                # Internal/restricted endpoints
+                r"/resolved$", r"/pending$", r"/approved$", r"/rejected$",
+                r"/review$", r"/moderate$", r"/moderation/",
+                r"/internal/", r"/private/", r"/restricted/",
+                r"/staff/", r"/employee/", r"/intranet/",
             ],
             param_patterns=[
                 r"^debug$", r"^test$", r"^admin$", r"^dev$",

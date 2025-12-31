@@ -36,6 +36,7 @@ JuicyURLs automatically categorizes URLs by potential vulnerability type:
 - 🔑 **Secret Detection** - Detects 30+ types of leaked API keys, tokens, and credentials in URLs
 - 📁 **Interesting Files** - Finds backups, configs, source code leaks, .git exposure
 - 🎯 **Smart Deduplication** - Groups similar URLs (e.g., `?id=1` and `?id=2`) keeping only unique patterns
+- 🤖 **Feedback Learning** - Learns from your feedback to improve accuracy over time (no ML dependencies!)
 - 📊 **Statistics** - Shows analysis summary and confidence levels
 - 🎨 **Color Output** - Beautiful, color-coded terminal output with confidence stars (★★★)
 - 🔧 **Flexible Input** - File, stdin, or direct domain scanning
@@ -93,6 +94,12 @@ juicyurls -d example.com --tool waybackurls
 
 # Use both tools
 juicyurls -d example.com --tool both
+
+# Set custom timeout for large domains (default: 600s = 10 min)
+juicyurls -d example.com --timeout 1800  # 30 minutes
+
+# No timeout (wait forever)
+juicyurls -d example.com --timeout 0
 ```
 
 ### Filter by Category or Severity
@@ -210,6 +217,70 @@ juicyurls -f urls.txt -v
   URL: https://api.example.com/webhook?token=sk_live_EXAMPLE_KEY_HERE
   🔑 DETECTED SECRETS:
     ⚠️  stripe_secret: sk_live_EXAM****HERE (in param: token)
+```
+
+### Feedback Learning
+
+JuicyURLs can **learn from your feedback** to improve accuracy over time. When you find false positives or true positives, teach the tool!
+
+```bash
+# Mark a URL as false positive (not useful)
+juicyurls --feedback fp "https://example.com/upload/boring/page.htm"
+
+# Mark a URL as true positive (found a bug!)
+juicyurls --feedback tp "https://example.com/admin/config.php"
+
+# View what patterns have been learned
+juicyurls --show-learning
+
+# Reset all learned data
+juicyurls --reset-learning
+
+# Run without applying learned adjustments
+juicyurls -f urls.txt --no-learning
+```
+
+**How it works:**
+- Extracts features from URLs (path segments, extensions, params, domain patterns)
+- Tracks which features correlate with true/false positives
+- Adjusts confidence scores based on learned patterns
+- Data stored in `~/.juicyurls/feedback.json` (portable, shareable)
+
+**Example workflow:**
+```bash
+# 1. Scan a domain
+juicyurls -d example.com -o results.txt
+
+# 2. Review results and provide feedback
+juicyurls --feedback fp "https://example.com/upload/cs/index.htm"
+juicyurls --feedback fp "https://example.com/upload/content/faq.htm"
+juicyurls --feedback tp "https://example.com/admin/debug.php"
+
+# 3. Check learned patterns
+juicyurls --show-learning
+
+# 4. Re-scan with learned patterns applied
+juicyurls -d example.com --min-confidence 0.3
+```
+
+**Example learning output:**
+```
+🧠 JuicyURLs Learning Summary
+==================================================
+
+📊 Feedback Statistics:
+   Total feedback entries: 6
+   True positives (TP):    3
+   False positives (FP):   3
+   Learned patterns:       14
+
+📈 Learned Confidence Adjustments:
+   Path Patterns:
+      ❌ path:upload: -0.300
+      ❌ path:cs: -0.300
+   Category Patterns:
+      ❌ cat:upload: -0.300
+      ✅ cat:auth: +0.300
 ```
 
 ## 🎯 Vulnerability Categories
@@ -361,6 +432,7 @@ Input Options:
   -f, --file FILE          Input file containing URLs
   -d, --domain DOMAIN      Domain to gather URLs for
   --tool {waybackurls,gau,both}  External tool for URL gathering
+  --timeout SECONDS        Timeout for external tools (default: 600s). Use 0 for no timeout.
 
 Filter Options:
   -c, --categories CAT...  Filter by categories
@@ -380,6 +452,12 @@ Smart Filtering (URL Intelligence):
   --show-intel             Show intelligence classification in output
   --detect-secrets         Detect leaked secrets (default: enabled)
   --no-secrets             Disable secret detection
+
+Learning Options:
+  --feedback TYPE URL      Provide feedback: tp (true positive) or fp (false positive)
+  --show-learning          Show learned patterns and statistics
+  --reset-learning         Reset all learned patterns
+  --no-learning            Disable applying learned adjustments
 
 Output Options:
   -o, --output FILE        Output file
