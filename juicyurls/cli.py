@@ -12,6 +12,7 @@ import subprocess
 import shutil
 import os
 from typing import List, Optional
+from urllib.parse import urlparse
 
 from .analyzer import URLAnalyzer
 from .patterns import PatternManager, Severity
@@ -22,6 +23,26 @@ from .learning import FeedbackLearner
 def get_version() -> str:
     """Get the tool version."""
     return "1.0.0"
+
+
+def sanitize_domain(domain: str) -> str:
+    """
+    Sanitize domain input by stripping protocol and path.
+    
+    Handles inputs like:
+    - https://www.example.com -> www.example.com
+    - http://example.com/path -> example.com
+    - example.com -> example.com
+    """
+    domain = domain.strip()
+    
+    # If it looks like a URL, parse it
+    if '://' in domain:
+        parsed = urlparse(domain)
+        return parsed.netloc or parsed.path.split('/')[0]
+    
+    # Remove any trailing path
+    return domain.split('/')[0]
 
 
 def find_tool(tool: str) -> Optional[str]:
@@ -107,10 +128,11 @@ def run_external_tool(tool: str, domain: str, extra_args: List[str] = None, time
         result = subprocess.run(
             cmd,
             capture_output=True,
-            text=True,
             timeout=timeout
         )
-        urls = [line.strip() for line in result.stdout.split('\n') if line.strip()]
+        # Decode stdout as UTF-8 with error handling for non-UTF8 characters
+        stdout = result.stdout.decode('utf-8', errors='ignore')
+        urls = [line.strip() for line in stdout.split('\n') if line.strip()]
         return urls
     except subprocess.TimeoutExpired:
         print(f"⚠️  Warning: {tool} timed out after {timeout}s. Try increasing with --timeout flag.", file=sys.stderr)
@@ -434,16 +456,18 @@ Examples:
     
     # Gather URLs using external tool
     if args.domain:
-        print(f"🔍 Gathering URLs for {args.domain}...", file=sys.stderr)
+        # Sanitize domain (strip protocol if user provided full URL)
+        domain = sanitize_domain(args.domain)
+        print(f"🔍 Gathering URLs for {domain}...", file=sys.stderr)
         
         # Handle timeout (0 means no timeout)
         timeout = args.timeout if args.timeout > 0 else None
         
         if args.tool == 'both':
-            urls.extend(run_external_tool('waybackurls', args.domain, timeout=timeout))
-            urls.extend(run_external_tool('gau', args.domain, timeout=timeout))
+            urls.extend(run_external_tool('waybackurls', domain, timeout=timeout))
+            urls.extend(run_external_tool('gau', domain, timeout=timeout))
         else:
-            urls.extend(run_external_tool(args.tool, args.domain, timeout=timeout))
+            urls.extend(run_external_tool(args.tool, domain, timeout=timeout))
         
         print(f"📥 Gathered {len(urls)} URLs", file=sys.stderr)
     
